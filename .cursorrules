@@ -1,0 +1,24 @@
+{
+    "rules": {
+        "rust": {
+            "string_types": {
+                "default": "SmolStr",
+                "use_str": {
+                    "description": "Use &str when the string lifetime can be considered unchanged in the future",
+                    "conditions": [
+                        "string is a literal",
+                        "string is passed as a function parameter and not stored (even if implementation changes, as long as functionality remains the same)",
+                        "string is used only within a single scope"
+                    ]
+                }
+            },
+            "module_structure": {
+                "description": "Module can be defined either as a folder with mod.rs inside OR a folder with a module-name.rs file at the same level",
+                "conditions": [
+                    "module is a folder with mod.rs inside",
+                    "module is a folder with a module-name.rs file at the same level"
+                ]
+            }
+        }
+    }
+}
