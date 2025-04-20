@@ -55,7 +55,7 @@ impl HttpClient {
                 let mut result = String::new();
                 result.push_str(entry.to.as_str());
                 result.push_str(rest);
-                log::info!("Applying mirror {} => {}", url, result);
+                log::debug!("Applying mirror {} => {}", url, result);
                 return self.client_inner.get(result);
             }
         }

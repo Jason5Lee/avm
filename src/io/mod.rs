@@ -1,6 +1,7 @@
-use std::{fs::File, io::Write, path::PathBuf, pin::Pin};
+use std::{fs::File, io::Write, path::PathBuf};
 
-use smol_str::ToSmolStr;
+use async_trait::async_trait;
+use smol_str::{SmolStr, ToSmolStr};
 
 use crate::HttpClient;
 
@@ -24,19 +25,21 @@ impl ArchiveType {
     }
 }
 
-pub type OnExtracted = Option<
-    Box<
-        dyn FnOnce(
-                ArchiveExtractInfo,
-            ) -> Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>>>>
-            + Send
-            + 'static,
-    >,
->;
+pub enum VerifyMethod {
+    None,
+    Sha1(SmolStr),
+}
+
 pub struct ArchiveExtractInfo {
     pub archive_path: PathBuf,
     pub archive_type: ArchiveType,
     pub extracted_dir: PathBuf,
+}
+
+#[async_trait]
+pub trait DownloadExtractCustomAction {
+    async fn on_downloaded(&mut self, info: &ArchiveExtractInfo) -> anyhow::Result<()>;
+    async fn on_extracted(&mut self, info: &ArchiveExtractInfo) -> anyhow::Result<()>;
 }
 
 struct DownloadingState {
@@ -51,9 +54,13 @@ enum DownloadExtractStateInner {
         blocking::TmpDir,
         ArchiveExtractInfo,
         DownloadingState,
-        OnExtracted,
+        Box<dyn DownloadExtractCustomAction + Send>,
     ),
-    Extracting(blocking::TmpDir, ArchiveExtractInfo, OnExtracted),
+    Extracting(
+        blocking::TmpDir,
+        ArchiveExtractInfo,
+        Box<dyn DownloadExtractCustomAction + Send>,
+    ),
     Stopped,
 }
 
@@ -63,7 +70,7 @@ impl DownloadExtractState {
         client: &HttpClient,
         url: &str,
         tmp_dir: PathBuf,
-        on_extracted: OnExtracted,
+        custom_action: Box<dyn DownloadExtractCustomAction + Send>,
     ) -> anyhow::Result<Self> {
         let response = client.get(url).send().await?;
         if !response.status().is_success() {
@@ -80,7 +87,7 @@ impl DownloadExtractState {
             std::fs::create_dir_all(&tmp_dir)?;
             let tmp_dir = blocking::TmpDir {
                 path: tmp_dir,
-                inside_spawn_blocking: false,
+                should_not_block: false,
             };
             let archive_path = tmp_dir.path.join("download");
             let archive_file = std::fs::File::create(&archive_path)?;
@@ -88,7 +95,7 @@ impl DownloadExtractState {
         })
         .await?;
 
-        tmp_dir.inside_spawn_blocking = true;
+        tmp_dir.should_not_block = true;
         let extracted_dir = tmp_dir.path.join("extracted");
 
         let total_size = response.content_length();
@@ -106,7 +113,7 @@ impl DownloadExtractState {
                     total_size,
                     downloaded_size: 0,
                 },
-                on_extracted,
+                custom_action,
             ),
         ))
     }
@@ -148,7 +155,7 @@ impl DownloadExtractState {
                     downloaded_size,
                     total_size,
                 },
-                on_extracted,
+                mut custom_action,
             ) => {
                 *abandoned_tmp_dir = Some(tmp_dir);
                 Ok(DownloadExtractState(
@@ -163,13 +170,14 @@ impl DownloadExtractState {
                                 downloaded_size: downloaded_size + chunk.len() as u64,
                                 total_size,
                             },
-                            on_extracted,
+                            custom_action,
                         )
                     } else {
+                        custom_action.on_downloaded(&archive_extract_info).await?;
                         DownloadExtractStateInner::Extracting(
                             abandoned_tmp_dir.take().unwrap(),
                             archive_extract_info,
-                            on_extracted,
+                            custom_action,
                         )
                     },
                 ))
@@ -177,7 +185,7 @@ impl DownloadExtractState {
             DownloadExtractStateInner::Extracting(
                 tmp_dir,
                 mut archive_extract_info,
-                on_extracted,
+                mut custom_action,
             ) => {
                 *abandoned_tmp_dir = Some(tmp_dir);
                 archive_extract_info = crate::spawn_blocking(move || {
@@ -189,10 +197,8 @@ impl DownloadExtractState {
                     Ok(archive_extract_info)
                 })
                 .await?;
-                if let Some(on_extracted) = on_extracted {
-                    on_extracted(archive_extract_info).await?;
-                }
-                abandoned_tmp_dir.as_mut().unwrap().inside_spawn_blocking = false;
+                custom_action.on_extracted(&archive_extract_info).await?;
+                abandoned_tmp_dir.as_mut().unwrap().should_not_block = false;
                 Ok(DownloadExtractState(DownloadExtractStateInner::Stopped))
             }
             DownloadExtractStateInner::Stopped => Err(anyhow::anyhow!("already stopped")),
@@ -204,7 +210,7 @@ impl DownloadExtractState {
         let result = self.do_advance(&mut local_tmp_dir).await;
         if let Some(mut tmp_dir) = local_tmp_dir {
             crate::spawn_blocking(move || {
-                tmp_dir.inside_spawn_blocking = false;
+                tmp_dir.should_not_block = false;
                 Ok(()) // drop tmp_dir
             })
             .await?;

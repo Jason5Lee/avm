@@ -1,12 +1,89 @@
 pub mod liberica;
 
 use crate::cli::AvmApp;
-use crate::io::{blocking, DownloadExtractState};
+use crate::io::{blocking, ArchiveExtractInfo, DownloadExtractCustomAction, DownloadExtractState};
 use crate::tool::{GeneralTool, InstallVersion};
 use crate::HttpClient;
+use async_trait::async_trait;
+use sha1::Digest;
 use smol_str::SmolStr;
 use std::ffi::OsString;
+use std::fs::File;
 use std::path::{Path, PathBuf};
+
+struct InstallCustomAction {
+    sha1: SmolStr,
+    tool_dir: PathBuf,
+    target_tag: SmolStr,
+    target_dir: PathBuf,
+    default: bool,
+}
+
+#[async_trait]
+impl DownloadExtractCustomAction for InstallCustomAction {
+    async fn on_downloaded(&mut self, info: &ArchiveExtractInfo) -> anyhow::Result<()> {
+        let sha1 = hex::decode(&self.sha1)?;
+        let mut file = File::open(&info.archive_path)?;
+        let mut hasher = sha1::Sha1::new();
+        std::io::copy(&mut file, &mut hasher)?;
+        let result = hasher.finalize();
+        if result.as_slice() != sha1 {
+            anyhow::bail!("sha1 verification failed");
+        }
+
+        log::debug!("sha1 verification passed");
+        Ok(())
+    }
+
+    async fn on_extracted(&mut self, info: &ArchiveExtractInfo) -> anyhow::Result<()> {
+        let extracted_dir = info.extracted_dir.clone();
+        let target_dir = self.target_dir.clone();
+        let target_dir = crate::spawn_blocking(move || {
+            let entries = std::fs::read_dir(&extracted_dir)?
+                .take(2)
+                .collect::<Result<Vec<_>, _>>()?;
+
+            let move_source = if entries.len() == 1 {
+                let entry = &entries[0];
+                let path = entry.path();
+                if path.is_dir() {
+                    path
+                } else {
+                    extracted_dir
+                }
+            } else {
+                extracted_dir
+            };
+
+            if target_dir.exists() {
+                std::fs::remove_dir_all(&target_dir)?;
+            }
+            if let Some(parent) = target_dir.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+
+            std::fs::rename(move_source, &target_dir)?;
+            Ok(target_dir)
+        })
+        .await?;
+
+        if self.default {
+            let default_path = self.tool_dir.join(AvmApp::DEFAULT_TAG);
+            let target_tag = self.target_tag.clone();
+            crate::spawn_blocking(move || {
+                blocking::set_alias_tag(
+                    &target_tag,
+                    &target_dir,
+                    &AvmApp::DEFAULT_TAG,
+                    &default_path,
+                )
+            })
+            .await?;
+        }
+
+        Ok(())
+    }
+}
 
 pub async fn install(
     tool: &dyn GeneralTool,
@@ -48,54 +125,13 @@ pub async fn install(
         client,
         &down_url.url,
         tmp_dir,
-        Some(Box::new(move |info| {
-            Box::pin(async move {
-                let extracted_dir = info.extracted_dir;
-                let instance_dir = crate::spawn_blocking(move || {
-                    let entries = std::fs::read_dir(&extracted_dir)?
-                        .take(2)
-                        .collect::<Result<Vec<_>, _>>()?;
-
-                    let move_source = if entries.len() == 1 {
-                        let entry = &entries[0];
-                        let path = entry.path();
-                        if path.is_dir() {
-                            path
-                        } else {
-                            extracted_dir
-                        }
-                    } else {
-                        extracted_dir
-                    };
-
-                    if instance_dir.exists() {
-                        std::fs::remove_dir_all(&instance_dir)?;
-                    }
-                    if let Some(parent) = instance_dir.parent() {
-                        std::fs::create_dir_all(parent)?;
-                    }
-
-                    std::fs::rename(move_source, &instance_dir)?;
-                    Ok(instance_dir)
-                })
-                .await?;
-
-                if default {
-                    let default_path = tool_dir.join(AvmApp::DEFAULT_TAG);
-                    crate::spawn_blocking(move || {
-                        blocking::set_alias_tag(
-                            &target_tag,
-                            &instance_dir,
-                            &AvmApp::DEFAULT_TAG,
-                            &default_path,
-                        )
-                    })
-                    .await?;
-                }
-
-                Ok(())
-            })
-        })),
+        Box::new(InstallCustomAction {
+            sha1: down_url.sha1,
+            tool_dir,
+            target_tag: target_tag.into(),
+            target_dir: instance_dir,
+            default,
+        }),
     )
     .await
 }

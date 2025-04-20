@@ -7,7 +7,7 @@ use zip::ZipArchive;
 
 pub struct TmpDir {
     pub path: PathBuf,
-    pub inside_spawn_blocking: bool,
+    pub should_not_block: bool,
 }
 
 impl TmpDir {
@@ -20,7 +20,7 @@ impl TmpDir {
 
 impl Drop for TmpDir {
     fn drop(&mut self) {
-        if self.inside_spawn_blocking && !crate::is_cancelled() {
+        if self.should_not_block && !crate::is_cancelled() {
             log::warn!("Blocking remove: {}", self.path.display());
         }
 
