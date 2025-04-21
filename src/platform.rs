@@ -6,6 +6,14 @@ pub mod os {
     pub const LINUX: &str = "linux";
     pub const LINUX_MUSL: &str = "linux_musl";
     pub const MAC: &str = "mac";
+    pub const SOLARIS: &str = "solaris";
+    pub const AIX: &str = "aix";
+    pub const FREEBSD: &str = "freebsd";
+    pub const NETBSD: &str = "netbsd";
+    pub const OPENBSD: &str = "openbsd";
+    pub const DRAGONFLYBSD: &str = "dragonflybsd";
+    pub const ILLUMOS: &str = "illumos";
+    pub const PLAN9: &str = "plan9";
 }
 
 pub mod cpu {
@@ -13,30 +21,24 @@ pub mod cpu {
     pub const X64: &str = "x64";
     pub const ARM32: &str = "arm32";
     pub const ARM64: &str = "arm64";
+    pub const ARMV6L: &str = "armv6l";
+    pub const LOONG64: &str = "loong64";
     pub const RISCV32: &str = "riscv32";
     pub const RISCV64: &str = "riscv64";
     pub const PPC32: &str = "ppc32";
     pub const PPC64: &str = "ppc64";
+    pub const PPC64LE: &str = "ppc64le";
     pub const SPARC32: &str = "sparc32";
     pub const SPARC64: &str = "sparc64";
+    pub const MIPS32: &str = "mips32";
+    pub const MIPS64: &str = "mips64";
+    pub const MIPS32LE: &str = "mips32le";
+    pub const MIPS64LE: &str = "mips64le";
+    pub const S390X: &str = "s390x";
 }
 
 pub fn create_platform_string(cpu: &str, os: &str) -> SmolStr {
     format!("{}-{}", cpu, os).into()
-}
-
-pub fn parse_platform_string(platform: &str) -> anyhow::Result<(&str, &str)> {
-    let mut parts = platform.splitn(2, '-');
-
-    let Some(cpu) = parts.next() else {
-        anyhow::bail!("Missing CPU component in platform: {}", platform);
-    };
-
-    let Some(os) = parts.next() else {
-        anyhow::bail!("Missing OS component in platform: {}", platform);
-    };
-
-    Ok((cpu, os))
 }
 
 #[allow(unreachable_code)]

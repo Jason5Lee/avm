@@ -1,3 +1,4 @@
+pub mod go;
 pub mod liberica;
 
 use crate::cli::AvmApp;
@@ -12,7 +13,7 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 
 struct InstallCustomAction {
-    sha1: SmolStr,
+    hash: crate::FileHash,
     tool_dir: PathBuf,
     target_tag: SmolStr,
     target_dir: PathBuf,
@@ -22,16 +23,26 @@ struct InstallCustomAction {
 #[async_trait]
 impl DownloadExtractCustomAction for InstallCustomAction {
     async fn on_downloaded(&mut self, info: &ArchiveExtractInfo) -> anyhow::Result<()> {
-        let sha1 = hex::decode(&self.sha1)?;
+        let hash = hex::decode(&self.hash.hex)?;
         let mut file = File::open(&info.archive_path)?;
-        let mut hasher = sha1::Sha1::new();
-        std::io::copy(&mut file, &mut hasher)?;
-        let result = hasher.finalize();
-        if result.as_slice() != sha1 {
-            anyhow::bail!("sha1 verification failed");
+        let matched = match self.hash.algo {
+            crate::FileHashAlgo::Sha1 => {
+                let mut hasher = sha1::Sha1::new();
+                std::io::copy(&mut file, &mut hasher)?;
+                hasher.finalize().as_slice() == hash
+            }
+            crate::FileHashAlgo::Sha256 => {
+                let mut hasher = sha2::Sha256::new();
+                std::io::copy(&mut file, &mut hasher)?;
+                hasher.finalize().as_slice() == hash
+            }
+        };
+
+        if !matched {
+            anyhow::bail!("hash verification failed");
         }
 
-        log::debug!("sha1 verification passed");
+        log::debug!("hash verification passed");
         Ok(())
     }
 
@@ -126,7 +137,7 @@ pub async fn install(
         &down_url.url,
         tmp_dir,
         Box::new(InstallCustomAction {
-            sha1: down_url.sha1,
+            hash: down_url.hash,
             tool_dir,
             target_tag: target_tag.into(),
             target_dir: instance_dir,

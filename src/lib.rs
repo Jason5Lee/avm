@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::future::Future;
 use std::pin::Pin;
@@ -110,4 +110,16 @@ where
             }
         }
     }
+}
+
+#[derive(Serialize)]
+pub enum FileHashAlgo {
+    Sha1,
+    Sha256,
+}
+
+#[derive(Serialize)]
+pub struct FileHash {
+    hex: SmolStr,
+    algo: FileHashAlgo,
 }

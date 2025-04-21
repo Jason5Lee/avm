@@ -10,9 +10,11 @@ use super::{
 pub const CMD: &str = "get-downurl";
 
 pub fn command(info: &ToolInfo) -> clap::Command {
-    let mut subcmd = clap::Command::new(CMD)
-        .about("Get download link")
-        .arg(clap::Arg::new("version"));
+    let mut subcmd = clap::Command::new(CMD).about("Get download link").arg(
+        clap::Arg::new("version")
+            .required(true)
+            .help("Version to get download link for"),
+    );
     subcmd = add_platform_arg(
         subcmd,
         info.all_platforms.as_ref().map(|v| v.as_slice()),

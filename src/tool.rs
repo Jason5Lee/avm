@@ -36,7 +36,7 @@ pub enum InstallVersion {
 pub struct DownUrl {
     pub version: SmolStr,
     pub url: SmolStr,
-    pub sha1: SmolStr,
+    pub hash: crate::FileHash,
 }
 
 #[async_trait::async_trait]

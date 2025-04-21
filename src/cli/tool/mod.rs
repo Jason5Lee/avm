@@ -112,20 +112,16 @@ pub fn add_flavor_arg(
 }
 
 pub fn get_platform(args: &clap::ArgMatches) -> Option<&str> {
-    let platform = args.get_one::<String>("platform").unwrap();
-    if platform.is_empty() {
-        None
-    } else {
-        Some(platform)
+    match args.try_get_one::<String>("platform") {
+        Ok(s) => s.map(|s| s.as_str()),
+        Err(_) => None,
     }
 }
 
 pub fn get_flavor(args: &clap::ArgMatches) -> Option<&str> {
-    let flavor = args.get_one::<String>("flavor").unwrap();
-    if flavor.is_empty() {
-        None
-    } else {
-        Some(flavor)
+    match args.try_get_one::<String>("flavor") {
+        Ok(s) => s.map(|s| s.as_str()),
+        Err(_) => None,
     }
 }
 

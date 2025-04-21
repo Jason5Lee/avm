@@ -115,7 +115,17 @@ pub fn set_alias_tag(
 
 pub fn list_tags(path: &Path) -> std::io::Result<Vec<(SmolStr, Option<SmolStr>)>> {
     let mut tags = Vec::new();
-    for entry in std::fs::read_dir(path)? {
+    let entries = match std::fs::read_dir(path) {
+        Ok(entries) => entries,
+        Err(err) => {
+            if err.kind() == std::io::ErrorKind::NotFound {
+                return Ok(Vec::new());
+            }
+            return Err(err);
+        }
+    };
+
+    for entry in entries {
         let entry = entry?;
         let file_name = entry.file_name().to_string_lossy().to_smolstr();
         match get_link_target(&entry.path()) {

@@ -1,5 +1,6 @@
 use anyhow::Context;
 use avm::cli::{load_config, LoadedConfig};
+use avm::tool::general_tool::go;
 use avm::{cli::AvmApp, tool::general_tool::liberica, HttpClient};
 use log::LevelFilter;
 use std::sync::Arc;
@@ -28,6 +29,7 @@ fn main() {
             .block_on(avm::CancellableFuture::new(
                 AvmApp::new()
                     .add_tool(liberica::Tool::new(http_client.clone()))
+                    .add_tool(go::Tool::new(http_client.clone()))
                     .run(paths, &http_client),
             ))
             .unwrap_or(Ok(()))

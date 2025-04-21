@@ -6,28 +6,16 @@ use std::{collections::HashSet, sync::Arc};
 
 use crate::HttpClient;
 use crate::{
-    platform::{cpu, create_platform_string, current_cpu, current_os, os, parse_platform_string},
+    platform::{cpu, create_platform_string, current_cpu, current_os, os},
     tool::{DownUrl, InstallVersion, ToolInfo, Version},
 };
 
 pub struct Tool {
     client: Arc<HttpClient>,
     info: ToolInfo,
+    corresponding_dto_os_arch_bitness: Vec<(&'static str, &'static str, u32)>,
 }
 
-const OS: &[&str] = &[os::WIN, os::LINUX, os::LINUX_MUSL, os::MAC];
-const CPU: &[&str] = &[
-    cpu::X86,
-    cpu::X64,
-    cpu::ARM32,
-    cpu::ARM64,
-    cpu::RISCV32,
-    cpu::RISCV64,
-    cpu::PPC32,
-    cpu::PPC64,
-    cpu::SPARC32,
-    cpu::SPARC64,
-];
 const FLAVOR: &[&str] = &[
     "jdk",
     "jdk_full",
@@ -55,15 +43,23 @@ impl crate::tool::GeneralTool for Tool {
         major_version: Option<SmolStr>,
     ) -> anyhow::Result<Vec<Version>> {
         let platform = platform.ok_or_else(|| anyhow::anyhow!("Platform is required"))?;
-        let (cpu, os) = parse_platform_string(&platform)?;
+        let (cpu, os, bitness) = self.get_dto_os_arch_bitness(&platform);
         let flavor = Flavor::parse(flavor.as_deref())?;
 
         let mut releases = if flavor.is_nik {
-            self.fetch_nik_releases(&self.client, cpu, os, &flavor, major_version, None)
+            self.fetch_nik_releases(&self.client, cpu, os, bitness, &flavor, major_version, None)
                 .await?
         } else {
-            self.fetch_liberica_releases(&self.client, cpu, os, &flavor, major_version, None)
-                .await?
+            self.fetch_liberica_releases(
+                &self.client,
+                cpu,
+                os,
+                bitness,
+                &flavor,
+                major_version,
+                None,
+            )
+            .await?
         };
 
         releases.sort_by(|a, b| b.version.cmp(&a.version));
@@ -90,7 +86,7 @@ impl crate::tool::GeneralTool for Tool {
         version: InstallVersion,
     ) -> anyhow::Result<DownUrl> {
         let platform = platform.ok_or_else(|| anyhow::anyhow!("Platform is required"))?;
-        let (cpu, os) = parse_platform_string(&platform)?;
+        let (cpu, os, bitness) = self.get_dto_os_arch_bitness(&platform);
         let flavor = Flavor::parse(flavor.as_deref())?;
 
         let (major_version, version) = match version {
@@ -98,11 +94,27 @@ impl crate::tool::GeneralTool for Tool {
             InstallVersion::Specific { version } => (None, Some(version)),
         };
         let mut releases = if flavor.is_nik {
-            self.fetch_nik_releases(&self.client, cpu, os, &flavor, major_version, version)
-                .await?
+            self.fetch_nik_releases(
+                &self.client,
+                cpu,
+                os,
+                bitness,
+                &flavor,
+                major_version,
+                version,
+            )
+            .await?
         } else {
-            self.fetch_liberica_releases(&self.client, cpu, os, &flavor, major_version, version)
-                .await?
+            self.fetch_liberica_releases(
+                &self.client,
+                cpu,
+                os,
+                bitness,
+                &flavor,
+                major_version,
+                version,
+            )
+            .await?
         };
 
         releases.sort_by(|a, b| b.version.cmp(&a.version));
@@ -110,7 +122,10 @@ impl crate::tool::GeneralTool for Tool {
             Some(item) => Ok(DownUrl {
                 version: item.version_raw.to_smolstr(),
                 url: item.download_url.to_smolstr(),
-                sha1: item.sha1.to_smolstr(),
+                hash: crate::FileHash {
+                    hex: item.sha1.to_smolstr(),
+                    algo: crate::FileHashAlgo::Sha1,
+                },
             }),
             None => Err(anyhow::anyhow!("No download URL found.")),
         }
@@ -124,11 +139,8 @@ impl crate::tool::GeneralTool for Tool {
 
 impl Tool {
     pub fn new(client: Arc<HttpClient>) -> Self {
-        let all_platforms: Vec<SmolStr> = CPU
-            .iter()
-            .flat_map(|&cpu| OS.iter().map(move |&os| create_platform_string(cpu, os)))
-            .collect();
-
+        let (all_platforms, corresponding_dto_os_arch_bitness) =
+            Self::get_platforms_and_corresponding_dto_os_arch_bitness();
         let all_flavors = FLAVOR.iter().map(|f| f.to_smolstr()).collect::<Vec<_>>();
 
         let default_platform = current_cpu().and_then(|cpu| {
@@ -167,7 +179,56 @@ These distributions are designed for building native executables from Java bytec
                 default_flavor: Some("jdk".to_smolstr()),
                 version_is_major: false,
             },
+            corresponding_dto_os_arch_bitness,
         }
+    }
+
+    fn get_platforms_and_corresponding_dto_os_arch_bitness(
+    ) -> (Vec<SmolStr>, Vec<(&'static str, &'static str, u32)>) {
+        let mut platforms = Vec::new();
+        let mut corresponding_dto_os_arch_bitness = Vec::new();
+        let mut add = |cpu: &str,
+                       os: &str,
+                       dto_os: &'static str,
+                       dto_arch: &'static str,
+                       dto_bitness: u32| {
+            platforms.push(create_platform_string(cpu, os));
+            corresponding_dto_os_arch_bitness.push((dto_arch, dto_os, dto_bitness));
+        };
+
+        add(cpu::X86, os::LINUX, "linux", "x86", 32);
+        add(cpu::X64, os::LINUX, "linux", "x86", 64);
+        add(cpu::ARM32, os::LINUX, "linux", "arm", 32);
+        add(cpu::ARM64, os::LINUX, "linux", "arm", 64);
+        add(cpu::PPC64, os::LINUX, "linux", "ppc", 64);
+        add(cpu::RISCV64, os::LINUX, "linux", "riscv", 64);
+
+        add(cpu::ARM64, os::WIN, "windows", "arm", 64);
+        add(cpu::X86, os::WIN, "windows", "x86", 32);
+        add(cpu::X64, os::WIN, "windows", "x86", 64);
+
+        add(cpu::X64, os::LINUX_MUSL, "linux-musl", "x86", 64);
+        add(cpu::ARM64, os::LINUX_MUSL, "linux-musl", "arm", 64);
+
+        add(cpu::X64, os::MAC, "macos", "x86", 64);
+        add(cpu::ARM64, os::MAC, "macos", "arm", 64);
+
+        add(cpu::SPARC64, os::SOLARIS, "solaris", "sparc", 64);
+        add(cpu::X64, os::SOLARIS, "solaris", "x86", 64);
+
+        (platforms, corresponding_dto_os_arch_bitness)
+    }
+
+    fn get_dto_os_arch_bitness(&self, platform: &str) -> (&'static str, &'static str, u32) {
+        let index = self
+            .info
+            .all_platforms
+            .as_ref()
+            .unwrap()
+            .iter()
+            .position(|p| p == platform)
+            .unwrap();
+        self.corresponding_dto_os_arch_bitness[index]
     }
 
     async fn fetch_liberica_releases(
@@ -175,13 +236,14 @@ These distributions are designed for building native executables from Java bytec
         client: &HttpClient,
         cpu: &str,
         os: &str,
+        bitness: u32,
         flavor: &Flavor,
         major_version: Option<SmolStr>,
         version: Option<SmolStr>,
     ) -> anyhow::Result<Vec<ReleaseItem>> {
         let url = format!("{}liberica/releases", BASE_URL);
         let mut request_builder =
-            self.build_parameters(client.get(&url), cpu, os, &flavor.bundle_type)?;
+            self.build_parameters(client.get(&url), cpu, os, bitness, &flavor.bundle_type)?;
 
         if let Some(major_version) = major_version {
             request_builder = request_builder.query(&[("version-feature", &major_version)]);
@@ -206,13 +268,14 @@ These distributions are designed for building native executables from Java bytec
         client: &HttpClient,
         cpu: &str,
         os: &str,
+        bitness: u32,
         flavor: &Flavor,
         major_version: Option<SmolStr>,
         version: Option<SmolStr>,
     ) -> anyhow::Result<Vec<ReleaseItem>> {
         let url = format!("{}nik/releases", BASE_URL);
         let mut request_builder =
-            self.build_parameters(client.get(&url), cpu, os, &flavor.bundle_type)?;
+            self.build_parameters(client.get(&url), cpu, os, bitness, &flavor.bundle_type)?;
 
         if let Some(version) = version {
             request_builder = request_builder.query(&[("version", format!("liberica@{version}"))]);
@@ -246,37 +309,16 @@ These distributions are designed for building native executables from Java bytec
     fn build_parameters(
         &self,
         request_builder: reqwest::RequestBuilder,
-        cpu: &str,
+        arch: &str,
         os: &str,
+        bitness: u32,
         bundle_type: &str,
     ) -> anyhow::Result<reqwest::RequestBuilder> {
-        let (arch, bitness) = match cpu {
-            cpu::X86 => ("x86", "32"),
-            cpu::X64 => ("x86", "64"),
-            cpu::ARM32 => ("arm", "32"),
-            cpu::ARM64 => ("arm", "64"),
-            cpu::PPC32 => ("ppc", "32"),
-            cpu::PPC64 => ("ppc", "64"),
-            cpu::SPARC64 => ("sparc", "64"),
-            cpu::SPARC32 => ("sparc", "32"),
-            cpu::RISCV64 => ("riscv", "64"),
-            cpu::RISCV32 => ("riscv", "32"),
-            _ => anyhow::bail!("Unsupported CPU architecture: {}", cpu),
-        };
-
-        let (os, package_type) = match os {
-            os::LINUX => ("linux", "tar.gz"),
-            os::LINUX_MUSL => ("linux-musl", "tar.gz"),
-            os::MAC => ("macos", "tar.gz"),
-            os::WIN => ("windows", "zip"),
-            _ => anyhow::bail!("Unsupported OS: {}", os),
-        };
-
         Ok(request_builder.query(&[
             ("arch", arch),
-            ("bitness", bitness),
             ("os", os),
-            ("package-type", package_type),
+            ("installationType", "archive"),
+            ("bitness", &bitness.to_string()),
             ("bundle-type", bundle_type),
         ]))
     }
