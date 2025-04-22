@@ -1,3 +1,4 @@
+use anyhow::Context;
 use serde::Deserialize;
 use smol_str::{SmolStr, ToSmolStr};
 use std::path::{Path, PathBuf};
@@ -7,7 +8,7 @@ use std::{collections::HashSet, sync::Arc};
 use crate::HttpClient;
 use crate::{
     platform::{cpu, create_platform_string, current_cpu, current_os, os},
-    tool::{DownUrl, InstallVersion, ToolInfo, Version},
+    tool::{InstallVersion, ToolDownInfo, ToolInfo, Version},
 };
 
 pub struct Tool {
@@ -36,14 +37,19 @@ impl crate::tool::GeneralTool for Tool {
         let (cpu, os) = self.get_dto_cpu_os(&platform);
 
         let mut releases = self
-            .fetch_go_releases(&self.client, cpu, os, major_version)
+            .fetch_go_releases(
+                &self.client,
+                cpu,
+                os,
+                major_version.map(|v| InstallVersion::Latest { major_version: v }),
+            )
             .await?;
 
         releases.sort_by(|a, b| b.version.cmp(&a.version));
         let mut versions = Vec::new();
         let mut version_set = HashSet::new();
         for release in releases {
-            let version_raw = release.version_raw.to_smolstr();
+            let version_raw = release.version_raw.clone();
             if version_set.insert(version_raw.clone()) {
                 versions.push(Version {
                     version: version_raw,
@@ -56,36 +62,26 @@ impl crate::tool::GeneralTool for Tool {
         Ok(versions)
     }
 
-    async fn get_down_url(
+    async fn get_down_info(
         &self,
         platform: Option<SmolStr>,
         _flavor: Option<SmolStr>,
         version: InstallVersion,
-    ) -> anyhow::Result<DownUrl> {
+    ) -> anyhow::Result<ToolDownInfo> {
         let platform = platform.ok_or_else(|| anyhow::anyhow!("Platform is required"))?;
         let (cpu, os) = self.get_dto_cpu_os(&platform);
 
-        let (major_version, version) = match version {
-            InstallVersion::Latest { major_version } => (Some(major_version), None),
-            InstallVersion::Specific { version } => (None, Some(version)),
-        };
-
         let mut releases = self
-            .fetch_go_releases(&self.client, cpu, os, major_version)
+            .fetch_go_releases(&self.client, cpu, os, Some(version))
             .await?;
         releases.sort_by(|a, b| b.version.cmp(&a.version));
-
-        if let Some(ver) = version {
-            releases.retain(|r| r.version_raw == ver);
-        }
-
         match releases.into_iter().next() {
-            Some(item) => Ok(DownUrl {
-                version: item.version_raw.to_smolstr(),
-                url: item.download_url.to_smolstr(),
+            Some(item) => Ok(ToolDownInfo {
+                version: item.version_raw,
+                url: item.download_url.into(),
                 hash: crate::FileHash {
-                    hex: item.sha256.to_smolstr(),
-                    algo: crate::FileHashAlgo::Sha256,
+                    sha256: Some(item.sha256.into()),
+                    ..Default::default()
                 },
             }),
             None => Err(anyhow::anyhow!("No download URL found.")),
@@ -112,8 +108,8 @@ impl Tool {
         Tool {
             client,
             info: ToolInfo {
-                name: "go".to_smolstr(),
-                about: "Go programming language".to_smolstr(),
+                name: "go".into(),
+                about: "Go programming language".into(),
                 after_long_help: None,
                 all_platforms: Some(all_platforms),
                 default_platform,
@@ -219,15 +215,16 @@ impl Tool {
         self.corresponding_dto_cpu_os[platform_index]
     }
 
+    #[allow(clippy::type_complexity)] // I don't get why `Box<dyn Fn(&str, &GoVersion) -> bool>` is considered too complex
     async fn fetch_go_releases(
         &self,
         client: &HttpClient,
         cpu: &str,
         os: &str,
-        major_version: Option<SmolStr>,
+        version: Option<InstallVersion>,
     ) -> anyhow::Result<Vec<ReleaseItem>> {
         let response: Vec<GoDlDto> = client
-            .get(&BASE_URL)
+            .get(BASE_URL)
             .query(&[("mode", "json"), ("include", "all")])
             .send()
             .await?
@@ -235,19 +232,28 @@ impl Tool {
             .json()
             .await?;
 
+        let verify_version: Box<dyn Fn(&str, &GoVersion) -> bool> = match version {
+            Some(InstallVersion::Latest { major_version }) => Box::new({
+                let major_version = major_version
+                    .parse::<u32>()
+                    .context("Failed to parse major version")?;
+                move |_, version| version.major == major_version
+            }),
+            Some(InstallVersion::Specific { version }) => {
+                Box::new(move |version_raw, _| version_raw == version)
+            }
+            None => Box::new(|_, _| true),
+        };
+
         let releases: Vec<ReleaseItem> = response
             .into_iter()
             .filter_map(|r| {
                 let version = GoVersion::from_str(&r.version)
                     .map_err(|e| log::error!("Failed to parse Go version: {}", e))
                     .ok()?;
-                if let Some(major_version) = &major_version {
-                    if major_version
-                        .parse::<u32>()
-                        .map_or(false, |v| v != version.major)
-                    {
-                        return None;
-                    }
+                let version_raw = &r.version[2..]; // strip "go" prefix
+                if !verify_version(version_raw, &version) {
+                    return None;
                 }
 
                 let file = r
@@ -258,7 +264,7 @@ impl Tool {
                 Some(ReleaseItem {
                     download_url: format!("{}/{}", BASE_URL, file.filename),
                     sha256: file.sha256.clone(),
-                    version_raw: r.version.to_smolstr(),
+                    version_raw: version_raw.into(),
                     lts: version.pre_release == PreRelease::None,
                     version,
                 })

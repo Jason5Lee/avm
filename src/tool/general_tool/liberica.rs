@@ -7,7 +7,7 @@ use std::{collections::HashSet, sync::Arc};
 use crate::HttpClient;
 use crate::{
     platform::{cpu, create_platform_string, current_cpu, current_os, os},
-    tool::{DownUrl, InstallVersion, ToolInfo, Version},
+    tool::{InstallVersion, ToolDownInfo, ToolInfo, Version},
 };
 
 pub struct Tool {
@@ -66,7 +66,7 @@ impl crate::tool::GeneralTool for Tool {
         let mut versions = Vec::new();
         let mut version_set = HashSet::new();
         for release in releases {
-            let version_raw = release.version_raw.to_smolstr();
+            let version_raw = SmolStr::new(release.version_raw);
             if version_set.insert(version_raw.clone()) {
                 versions.push(Version {
                     version: version_raw,
@@ -79,12 +79,12 @@ impl crate::tool::GeneralTool for Tool {
         Ok(versions)
     }
 
-    async fn get_down_url(
+    async fn get_down_info(
         &self,
         platform: Option<SmolStr>,
         flavor: Option<SmolStr>,
         version: InstallVersion,
-    ) -> anyhow::Result<DownUrl> {
+    ) -> anyhow::Result<ToolDownInfo> {
         let platform = platform.ok_or_else(|| anyhow::anyhow!("Platform is required"))?;
         let (cpu, os, bitness) = self.get_dto_os_arch_bitness(&platform);
         let flavor = Flavor::parse(flavor.as_deref())?;
@@ -119,12 +119,12 @@ impl crate::tool::GeneralTool for Tool {
 
         releases.sort_by(|a, b| b.version.cmp(&a.version));
         match releases.into_iter().next() {
-            Some(item) => Ok(DownUrl {
-                version: item.version_raw.to_smolstr(),
-                url: item.download_url.to_smolstr(),
+            Some(item) => Ok(ToolDownInfo {
+                version: item.version_raw.into(),
+                url: item.download_url.into(),
                 hash: crate::FileHash {
-                    hex: item.sha1.to_smolstr(),
-                    algo: crate::FileHashAlgo::Sha1,
+                    sha1: Some(item.sha1.into()),
+                    ..Default::default()
                 },
             }),
             None => Err(anyhow::anyhow!("No download URL found.")),
@@ -141,7 +141,7 @@ impl Tool {
     pub fn new(client: Arc<HttpClient>) -> Self {
         let (all_platforms, corresponding_dto_os_arch_bitness) =
             Self::get_platforms_and_corresponding_dto_os_arch_bitness();
-        let all_flavors = FLAVOR.iter().map(|f| f.to_smolstr()).collect::<Vec<_>>();
+        let all_flavors = FLAVOR.iter().map(SmolStr::new).collect::<Vec<_>>();
 
         let default_platform = current_cpu().and_then(|cpu| {
             let os = current_os()?;
@@ -152,8 +152,8 @@ impl Tool {
         Tool {
             client,
             info: ToolInfo {
-                name: "liberica".to_smolstr(),
-                about: "Liberica Java JDK/JRE".to_smolstr(),
+                name: "liberica".into(),
+                about: "Liberica Java JDK/JRE".into(),
                 after_long_help: Some(r#"### Flavors
 
 The flavor parameter allows you to specify which type of Liberica JDK or NIK to use, based on your application's needs. The available options include both Java SE Development Kit (JDK) and Java SE Runtime Environment (JRE) distributions, as well as the Liberica Native Image Kit (NIK), which enables Java bytecode to be compiled into native executables.
@@ -172,11 +172,11 @@ These distributions are tailored for running, compiling, and debugging Java appl
 These distributions are designed for building native executables from Java bytecode for improved performance and startup time:
 - **`nik_core` (Core version):** A minimal distribution with Liberica VM and native image (based on GraalVM), suitable for Java development.
 - **`nik_standard` (Standard version):** Adds support for plugins to enable the use of non-Java programming languages.
-- **`nik_full` (Full version):** A comprehensive build that includes LibericaFX for GUI-based applications."#.to_smolstr()),
+- **`nik_full` (Full version):** A comprehensive build that includes LibericaFX for GUI-based applications."#.into()),
                 all_platforms: Some(all_platforms),
                 default_platform,
                 all_flavors: Some(all_flavors),
-                default_flavor: Some("jdk".to_smolstr()),
+                default_flavor: Some("jdk".into()),
                 version_is_major: false,
             },
             corresponding_dto_os_arch_bitness,
@@ -231,6 +231,7 @@ These distributions are designed for building native executables from Java bytec
         self.corresponding_dto_os_arch_bitness[index]
     }
 
+    #[allow(clippy::too_many_arguments)] // for now
     async fn fetch_liberica_releases(
         &self,
         client: &HttpClient,
@@ -263,6 +264,7 @@ These distributions are designed for building native executables from Java bytec
         Ok(response.into_iter().map(ReleaseItem::from).collect())
     }
 
+    #[allow(clippy::too_many_arguments)] // for now
     async fn fetch_nik_releases(
         &self,
         client: &HttpClient,
@@ -317,7 +319,7 @@ These distributions are designed for building native executables from Java bytec
         Ok(request_builder.query(&[
             ("arch", arch),
             ("os", os),
-            ("installationType", "archive"),
+            ("installation-type", "archive"),
             ("bitness", &bitness.to_string()),
             ("bundle-type", bundle_type),
         ]))
@@ -334,7 +336,7 @@ impl Flavor {
     fn parse(s: Option<&str>) -> anyhow::Result<Flavor> {
         let s = s.unwrap_or("jdk");
         let is_nik = s.starts_with("nik");
-        let bundle_type = s.strip_prefix("nik_").unwrap_or(s).to_smolstr();
+        let bundle_type = SmolStr::new(s.strip_prefix("nik_").unwrap_or(s));
 
         if is_nik && !["core", "standard", "full"].contains(&bundle_type.as_str()) {
             anyhow::bail!("Invalid nik flavor: {}", s);
@@ -455,7 +457,7 @@ impl JdkVersion {
             }
 
             let version_numbers: Vec<&str> = version_part.split('.').collect();
-            if let Some(&v) = version_numbers.get(0) {
+            if let Some(&v) = version_numbers.first() {
                 major = v.parse().unwrap_or(0);
             }
             if let Some(&v) = version_numbers.get(1) {

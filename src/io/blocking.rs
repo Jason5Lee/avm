@@ -2,8 +2,11 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 use flate2::read::GzDecoder;
-use smol_str::{SmolStr, ToSmolStr};
+use sha1::Digest;
+use smol_str::SmolStr;
 use zip::ZipArchive;
+
+use crate::FileHash;
 
 pub struct TmpDir {
     pub path: PathBuf,
@@ -36,18 +39,15 @@ pub enum GetLinkResult<R> {
 }
 
 pub fn create_link(src_path: &Path, link_path: &Path) -> std::io::Result<()> {
-    let r: std::io::Result<()>;
     #[cfg(windows)]
     {
-        r = junction::create(src_path, link_path);
+        junction::create(src_path, link_path)
     }
 
     #[cfg(unix)]
     {
-        r = std::fs::symlink(src_path, link_path);
+        std::fs::symlink(src_path, link_path)
     }
-
-    Ok(r?)
 }
 
 pub fn get_link_target(path: &Path) -> GetLinkResult<PathBuf> {
@@ -94,9 +94,9 @@ pub fn set_alias_tag(
         anyhow::bail!("src tag '{src_tag}' not found");
     }
 
-    match check_is_link(&alias_path) {
+    match check_is_link(alias_path) {
         GetLinkResult::Link(_) => {
-            std::fs::remove_dir(&alias_path)?;
+            std::fs::remove_dir(alias_path)?;
         }
         GetLinkResult::NotFound => {}
         GetLinkResult::NotLink => {
@@ -108,7 +108,7 @@ pub fn set_alias_tag(
         }
     }
 
-    create_link(&src_path, &alias_path)?;
+    create_link(src_path, alias_path)?;
 
     Ok(())
 }
@@ -127,13 +127,13 @@ pub fn list_tags(path: &Path) -> std::io::Result<Vec<(SmolStr, Option<SmolStr>)>
 
     for entry in entries {
         let entry = entry?;
-        let file_name = entry.file_name().to_string_lossy().to_smolstr();
+        let file_name = entry.file_name().to_string_lossy().into();
         match get_link_target(&entry.path()) {
             GetLinkResult::NotFound => {}
             GetLinkResult::Err(err) => return Err(err),
             GetLinkResult::Link(target) => tags.push((
                 file_name,
-                Some(target.file_name().unwrap().to_string_lossy().to_smolstr()),
+                Some(target.file_name().unwrap().to_string_lossy().into()),
             )),
             GetLinkResult::NotLink => tags.push((file_name, None)),
         }
@@ -141,13 +141,39 @@ pub fn list_tags(path: &Path) -> std::io::Result<Vec<(SmolStr, Option<SmolStr>)>
     Ok(tags)
 }
 
-pub(super) fn extract_archive(
+// It seems `pub(super)` cause problem. Use `pub(crate)` now before investigating the root cause.
+pub(crate) fn verify_hash(hash: &FileHash, path: &Path) -> Result<(), anyhow::Error> {
+    if let Some(sha1) = &hash.sha1 {
+        let mut file = std::fs::File::open(path)?;
+        let sha1_bytes = hex::decode(sha1)?;
+        let mut hasher = sha1::Sha1::new();
+        std::io::copy(&mut file, &mut hasher)?;
+        if hasher.finalize().as_slice() != sha1_bytes.as_slice() {
+            anyhow::bail!("sha1 verification failed");
+        }
+    }
+
+    if let Some(sha256) = &hash.sha256 {
+        let mut file = std::fs::File::open(path)?;
+        let sha256_bytes = hex::decode(sha256)?;
+        let mut hasher = sha2::Sha256::new();
+        std::io::copy(&mut file, &mut hasher)?;
+        if hasher.finalize().as_slice() != sha256_bytes.as_slice() {
+            anyhow::bail!("sha256 verification failed");
+        }
+    }
+
+    log::debug!("hash verification passed");
+    Ok(())
+}
+
+pub(crate) fn extract_archive(
     archive_type: super::ArchiveType,
     archive_path: &Path,
     extracted_dir: &Path,
 ) -> Result<(), anyhow::Error> {
     std::fs::create_dir_all(extracted_dir)?;
-    let archive_file = std::fs::File::open(&archive_path)?;
+    let archive_file = std::fs::File::open(archive_path)?;
     match archive_type {
         super::ArchiveType::Zip => {
             let mut archive = ZipArchive::new(archive_file)?;

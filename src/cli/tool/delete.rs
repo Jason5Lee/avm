@@ -1,7 +1,6 @@
 use crate::tool::general_tool;
 use crate::tool::GeneralTool;
 use crate::tool::ToolInfo;
-use smol_str::ToSmolStr;
 
 pub const CMD: &str = "delete";
 
@@ -22,7 +21,7 @@ pub async fn run(
     let tag_to_delete = args
         .get_one::<String>("tag")
         .expect("Tag argument is required")
-        .to_smolstr();
+        .into();
 
     general_tool::delete_tag(tool, tools_base, tag_to_delete).await
 }

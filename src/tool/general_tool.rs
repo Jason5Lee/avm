@@ -2,14 +2,15 @@ pub mod go;
 pub mod liberica;
 
 use crate::cli::AvmApp;
-use crate::io::{blocking, ArchiveExtractInfo, DownloadExtractCustomAction, DownloadExtractState};
+use crate::io::{
+    blocking, ArchiveExtractInfo, ArchiveType, DownloadExtractCustomAction, DownloadExtractState,
+};
 use crate::tool::{GeneralTool, InstallVersion};
 use crate::HttpClient;
 use async_trait::async_trait;
 use sha1::Digest;
 use smol_str::SmolStr;
 use std::ffi::OsString;
-use std::fs::File;
 use std::path::{Path, PathBuf};
 
 struct InstallCustomAction {
@@ -23,25 +24,12 @@ struct InstallCustomAction {
 #[async_trait]
 impl DownloadExtractCustomAction for InstallCustomAction {
     async fn on_downloaded(&mut self, info: &ArchiveExtractInfo) -> anyhow::Result<()> {
-        let hash = hex::decode(&self.hash.hex)?;
-        let mut file = File::open(&info.archive_path)?;
-        let matched = match self.hash.algo {
-            crate::FileHashAlgo::Sha1 => {
-                let mut hasher = sha1::Sha1::new();
-                std::io::copy(&mut file, &mut hasher)?;
-                hasher.finalize().as_slice() == hash
-            }
-            crate::FileHashAlgo::Sha256 => {
-                let mut hasher = sha2::Sha256::new();
-                std::io::copy(&mut file, &mut hasher)?;
-                hasher.finalize().as_slice() == hash
-            }
-        };
-
-        if !matched {
-            anyhow::bail!("hash verification failed");
-        }
-
+        crate::spawn_blocking({
+            let hash = self.hash.clone();
+            let archive_path = info.archive_path.clone();
+            move || blocking::verify_hash(&hash, &archive_path)
+        })
+        .await?;
         log::debug!("hash verification passed");
         Ok(())
     }
@@ -85,7 +73,7 @@ impl DownloadExtractCustomAction for InstallCustomAction {
                 blocking::set_alias_tag(
                     &target_tag,
                     &target_dir,
-                    &AvmApp::DEFAULT_TAG,
+                    AvmApp::DEFAULT_TAG,
                     &default_path,
                 )
             })
@@ -96,6 +84,7 @@ impl DownloadExtractCustomAction for InstallCustomAction {
     }
 }
 
+#[allow(clippy::too_many_arguments)] // for now
 pub async fn install(
     tool: &dyn GeneralTool,
     client: &HttpClient,
@@ -103,57 +92,136 @@ pub async fn install(
     platform: Option<SmolStr>,
     flavor: Option<SmolStr>,
     install_version: InstallVersion,
-    force: bool,
+    update: bool,
     default: bool,
-) -> anyhow::Result<DownloadExtractState> {
-    let mut target_tag = String::new();
-    if let Some(p) = &platform {
-        target_tag.push_str(&p);
-        target_tag.push('_');
-    }
-    if let Some(f) = &flavor {
-        target_tag.push_str(&f);
-        target_tag.push('_');
-    }
-
-    let down_url = tool.get_down_url(platform, flavor, install_version).await?;
-    target_tag.push_str(&down_url.version);
+) -> anyhow::Result<(SmolStr, DownloadExtractState)> {
+    let down_info = tool
+        .get_down_info(platform.clone(), flavor.clone(), install_version)
+        .await?;
+    let down_info =
+        super::DownInfo::from_tool_down_info(down_info, platform.as_deref(), flavor.as_deref());
     let tool_dir = tools_base.join(&tool.info().name);
     log::debug!("Tool dir: {}", tool_dir.display());
-    let instance_dir = tool_dir.join(&target_tag);
-    log::debug!("Instance dir: {}", instance_dir.display());
-    if instance_dir.exists() && !force {
-        anyhow::bail!("\"{}\" already installed", target_tag);
-    }
+    let tag_dir = tool_dir.join(&down_info.tag);
+    log::debug!("Tag dir: {}", tag_dir.display());
+    let tag_dir = if update {
+        tag_dir
+    } else {
+        let (tag_dir, exists) = crate::spawn_blocking(move || {
+            let exists = tag_dir.exists();
+            Ok((tag_dir, exists))
+        })
+        .await?;
 
-    let tmp_dir = tool_dir.join(format!("{}_tmp", target_tag));
+        if exists {
+            anyhow::bail!("\"{}\" already installed", down_info.tag);
+        }
+
+        tag_dir
+    };
+
+    let tmp_dir = tool_dir.join(format!("{}_tmp", down_info.tag));
     log::debug!("Tmp dir: {}", tmp_dir.display());
-    if tmp_dir.exists() {
-        anyhow::bail!("\"{}\" is installing", target_tag);
+    let (tmp_dir, exists) = crate::spawn_blocking(move || {
+        let exists = tmp_dir.exists();
+        Ok((tmp_dir, exists))
+    })
+    .await?;
+    if exists {
+        anyhow::bail!("\"{}\" is installing", down_info.tag);
     }
 
-    DownloadExtractState::start(
+    let state = DownloadExtractState::start(
         client,
-        &down_url.url,
+        &down_info.url,
         tmp_dir,
         Box::new(InstallCustomAction {
-            hash: down_url.hash,
+            hash: down_info.hash,
             tool_dir,
-            target_tag: target_tag.into(),
-            target_dir: instance_dir,
+            target_tag: down_info.tag.clone(),
+            target_dir: tag_dir,
             default,
         }),
     )
-    .await
+    .await?;
+
+    Ok((down_info.tag, state))
 }
 
-pub async fn get_downurl(
+pub(crate) async fn install_from_archive(
+    tool: &dyn GeneralTool,
+    tools_base: &Path,
+    archive: PathBuf,
+    target_tag: &str,
+    hash: Option<&str>,
+    update: bool,
+    default: bool,
+) -> anyhow::Result<()> {
+    let tool_dir = tools_base.join(&tool.info().name);
+    log::debug!("Tool dir: {}", tool_dir.display());
+    let tag_dir = tool_dir.join(target_tag);
+    log::debug!("Tag dir: {}", tag_dir.display());
+    let tag_dir = if update {
+        tag_dir
+    } else {
+        let (tag_dir, exists) = crate::spawn_blocking(move || {
+            let exists = tag_dir.exists();
+            Ok((tag_dir, exists))
+        })
+        .await?;
+
+        if exists {
+            anyhow::bail!("\"{}\" already installed", target_tag);
+        }
+
+        tag_dir
+    };
+
+    let archive_type = ArchiveType::from_path(archive.as_os_str().as_encoded_bytes())?;
+    let hash = hash.map(serde_yaml_ng::from_str::<crate::FileHash>);
+    let tag_dir = crate::spawn_blocking(move || {
+        if let Some(hash) = hash {
+            blocking::verify_hash(&hash?, &archive)?;
+        }
+
+        log::info!("Extracting ...");
+        let mut target_dir = blocking::TmpDir {
+            path: tag_dir,
+            should_not_block: false,
+        };
+        std::fs::remove_dir_all(&target_dir.path).ok();
+        std::fs::create_dir_all(&target_dir.path)?;
+        blocking::extract_archive(archive_type, &archive, &target_dir.path)?;
+        let tag_dir = std::mem::take(&mut target_dir.path);
+        std::mem::forget(target_dir);
+        Ok(tag_dir)
+    })
+    .await?;
+
+    if default {
+        let default_path = tool_dir.join(AvmApp::DEFAULT_TAG);
+        let target_tag = target_tag.to_owned();
+        crate::spawn_blocking(move || {
+            blocking::set_alias_tag(&target_tag, &tag_dir, AvmApp::DEFAULT_TAG, &default_path)
+        })
+        .await?;
+    }
+
+    Ok(())
+}
+
+pub async fn get_downinfo(
     tool: &dyn GeneralTool,
     platform: Option<SmolStr>,
     flavor: Option<SmolStr>,
     install_version: InstallVersion,
-) -> anyhow::Result<super::DownUrl> {
-    tool.get_down_url(platform, flavor, install_version).await
+) -> anyhow::Result<super::DownInfo> {
+    let down_info = tool
+        .get_down_info(platform.clone(), flavor.clone(), install_version)
+        .await?;
+    let down_info =
+        super::DownInfo::from_tool_down_info(down_info, platform.as_deref(), flavor.as_deref());
+    Ok(down_info)
 }
 
 pub async fn get_vers(
@@ -175,7 +243,7 @@ pub async fn delete_tag(
     crate::spawn_blocking(move || {
         // Check if the tag is an alias target
         for (tag, alias_tag) in blocking::list_tags(&tool_dir)? {
-            if alias_tag.map_or(false, |at| at == tag_to_delete) {
+            if alias_tag.as_ref() == Some(&tag_to_delete) {
                 anyhow::bail!(
                     "tag '{}' is an alias target of '{}', delete the alias first",
                     tag_to_delete,

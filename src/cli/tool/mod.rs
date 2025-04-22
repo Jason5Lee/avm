@@ -2,7 +2,7 @@ use crate::tool::GeneralTool;
 use crate::tool::{InstallVersion, ToolInfo};
 use crate::HttpClient;
 use clap::builder::PossibleValuesParser;
-use smol_str::{SmolStr, ToSmolStr};
+use smol_str::SmolStr;
 
 use crate::cli::Paths;
 
@@ -10,9 +10,10 @@ mod alias;
 mod bin_path;
 mod copy;
 mod delete;
-mod get_downurl;
+mod get_downinfo;
 mod get_vers;
 mod install;
+mod install_from_archive;
 mod list;
 mod path;
 mod run;
@@ -25,9 +26,10 @@ pub fn command(info: &ToolInfo) -> clap::Command {
         .subcommand(alias::command(info))
         .subcommand(copy::command(info))
         .subcommand(delete::command(info))
-        .subcommand(get_downurl::command(info))
+        .subcommand(get_downinfo::command(info))
         .subcommand(get_vers::command(info))
         .subcommand(install::command(info))
+        .subcommand(install_from_archive::command())
         .subcommand(list::command())
         .subcommand(path::command())
         .subcommand(bin_path::command())
@@ -47,12 +49,15 @@ pub async fn run(
     args: &clap::ArgMatches,
 ) -> anyhow::Result<()> {
     match args.subcommand() {
-        Some((get_downurl::CMD, args)) => get_downurl::run(tool, args).await,
+        Some((get_downinfo::CMD, args)) => get_downinfo::run(tool, args).await,
         Some((get_vers::CMD, args)) => get_vers::run(tool, args).await,
         Some((alias::CMD, args)) => alias::run(tool, &paths.tool_dir, args).await,
         Some((copy::CMD, args)) => copy::run(tool, &paths.tool_dir, args).await,
         Some((delete::CMD, args)) => delete::run(tool, &paths.tool_dir, args).await,
         Some((install::CMD, args)) => install::run(tool, client, &paths.tool_dir, args).await,
+        Some((install_from_archive::CMD, args)) => {
+            install_from_archive::run(tool, &paths.tool_dir, args).await
+        }
         Some((list::CMD, _)) => list::run(tool, &paths.tool_dir).await,
         Some((path::CMD, args)) => path::run(tool, &paths.tool_dir, args),
         Some((bin_path::CMD, args)) => bin_path::run(tool, &paths.tool_dir, args),
@@ -126,7 +131,7 @@ pub fn get_flavor(args: &clap::ArgMatches) -> Option<&str> {
 }
 
 pub fn get_install_version(args: &clap::ArgMatches) -> InstallVersion {
-    let version = args.get_one::<String>("version").unwrap().to_smolstr();
+    let version = args.get_one::<String>("version").unwrap().into();
     if args.get_flag("latest") {
         InstallVersion::Latest {
             major_version: version,

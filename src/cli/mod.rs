@@ -46,7 +46,7 @@ impl AvmApp {
     pub fn add_tool<T: GeneralTool + Send + Sync + 'static>(self, tool: T) -> Self {
         let Self { mut cmd, mut tools } = self;
         let info = tool.info();
-        cmd = cmd.subcommand(tool::command(&info));
+        cmd = cmd.subcommand(tool::command(info));
         tools.insert(info.name.clone(), Box::new(tool));
         Self { cmd, tools }
     }
@@ -97,7 +97,7 @@ pub fn load_config() -> anyhow::Result<LoadedConfig> {
     let tool_path = data_path.join("tools");
 
     Ok(LoadedConfig {
-        mirror: config.mirror.unwrap_or_else(|| Default::default()),
+        mirror: config.mirror.unwrap_or_default(),
         paths: Paths {
             config_file: config_path,
             data_dir: data_path,

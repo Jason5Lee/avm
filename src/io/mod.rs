@@ -1,7 +1,7 @@
 use std::{fs::File, io::Write, path::PathBuf};
 
 use async_trait::async_trait;
-use smol_str::{SmolStr, ToSmolStr};
+use smol_str::SmolStr;
 
 use crate::HttpClient;
 
@@ -14,13 +14,16 @@ pub enum ArchiveType {
 }
 
 impl ArchiveType {
-    fn from_path(path: &str) -> anyhow::Result<ArchiveType> {
-        if path.ends_with(".zip") {
+    pub(crate) fn from_path(path: &[u8]) -> anyhow::Result<ArchiveType> {
+        if path.ends_with(b".zip") {
             Ok(ArchiveType::Zip)
-        } else if path.ends_with(".tar.gz") {
+        } else if path.ends_with(b".tar.gz") {
             Ok(ArchiveType::TarGz)
         } else {
-            Err(anyhow::anyhow!("unknown archive type from {}", path))
+            Err(anyhow::anyhow!(
+                "unknown archive type from {}",
+                String::from_utf8_lossy(path)
+            ))
         }
     }
 }
@@ -82,7 +85,7 @@ impl DownloadExtractState {
             );
         }
 
-        let archive_type = ArchiveType::from_path(url)?;
+        let archive_type = ArchiveType::from_path(url.as_bytes())?;
         let (archive_file, archive_path, mut tmp_dir) = crate::spawn_blocking(move || {
             std::fs::create_dir_all(&tmp_dir)?;
             let tmp_dir = blocking::TmpDir {
@@ -130,11 +133,11 @@ impl DownloadExtractState {
                 },
                 _,
             ) => crate::Status::InProgress {
-                name: "Downloading".to_smolstr(),
+                name: "Downloading".into(),
                 progress_ratio: total_size.map(|total| (*downloaded_size, total)),
             },
             DownloadExtractStateInner::Extracting(_, _, _) => crate::Status::InProgress {
-                name: "Extracting".to_smolstr(),
+                name: "Extracting".into(),
                 progress_ratio: None,
             },
             DownloadExtractStateInner::Stopped => crate::Status::Stopped,

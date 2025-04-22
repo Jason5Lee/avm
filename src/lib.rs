@@ -112,14 +112,10 @@ where
     }
 }
 
-#[derive(Serialize)]
-pub enum FileHashAlgo {
-    Sha1,
-    Sha256,
-}
-
-#[derive(Serialize)]
+#[derive(Clone, Default, Deserialize, Serialize)]
 pub struct FileHash {
-    hex: SmolStr,
-    algo: FileHashAlgo,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sha1: Option<SmolStr>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sha256: Option<SmolStr>,
 }
