@@ -73,6 +73,7 @@ pub async fn run(
     let mut prev_name: Option<SmolStr> = None;
     let mut pb: Option<ProgressBar> = None;
 
+    #[allow(clippy::while_let_loop)] // It's more clear that every case is handled.
     loop {
         match download_state.status() {
             crate::Status::InProgress {

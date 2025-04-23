@@ -8,7 +8,6 @@ use crate::io::{
 use crate::tool::{GeneralTool, InstallVersion};
 use crate::HttpClient;
 use async_trait::async_trait;
-use sha1::Digest;
 use smol_str::SmolStr;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};

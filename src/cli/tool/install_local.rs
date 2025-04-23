@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use crate::tool::general_tool;
 use crate::tool::GeneralTool;
 
-pub const CMD: &str = "install-from-archive";
+pub const CMD: &str = "install-local";
 
 pub fn command() -> clap::Command {
     clap::Command::new(CMD)
@@ -26,6 +26,7 @@ pub fn command() -> clap::Command {
                 .value_name("hash")
                 .long("hash")
                 .help("The hash of the archive file")
+                .long_help("The hash of the archive file, in the format of yaml like `sha256: <hash hex>`, supports sha1 and sha256")
                 .required(false),
         )
         .arg(

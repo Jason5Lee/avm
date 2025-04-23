@@ -13,7 +13,7 @@ mod delete;
 mod get_downinfo;
 mod get_vers;
 mod install;
-mod install_from_archive;
+mod install_local;
 mod list;
 mod path;
 mod run;
@@ -29,7 +29,7 @@ pub fn command(info: &ToolInfo) -> clap::Command {
         .subcommand(get_downinfo::command(info))
         .subcommand(get_vers::command(info))
         .subcommand(install::command(info))
-        .subcommand(install_from_archive::command())
+        .subcommand(install_local::command())
         .subcommand(list::command())
         .subcommand(path::command())
         .subcommand(bin_path::command())
@@ -55,9 +55,7 @@ pub async fn run(
         Some((copy::CMD, args)) => copy::run(tool, &paths.tool_dir, args).await,
         Some((delete::CMD, args)) => delete::run(tool, &paths.tool_dir, args).await,
         Some((install::CMD, args)) => install::run(tool, client, &paths.tool_dir, args).await,
-        Some((install_from_archive::CMD, args)) => {
-            install_from_archive::run(tool, &paths.tool_dir, args).await
-        }
+        Some((install_local::CMD, args)) => install_local::run(tool, &paths.tool_dir, args).await,
         Some((list::CMD, _)) => list::run(tool, &paths.tool_dir).await,
         Some((path::CMD, args)) => path::run(tool, &paths.tool_dir, args),
         Some((bin_path::CMD, args)) => bin_path::run(tool, &paths.tool_dir, args),

@@ -73,6 +73,12 @@ impl AvmApp {
     }
 }
 
+impl Default for AvmApp {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn load_config() -> anyhow::Result<LoadedConfig> {
     let dirs =
         ProjectDirs::from("", "", "avm").ok_or_else(|| anyhow::anyhow!("No home directory"))?;
