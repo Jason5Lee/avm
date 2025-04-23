@@ -46,7 +46,7 @@ pub fn create_link(src_path: &Path, link_path: &Path) -> std::io::Result<()> {
 
     #[cfg(unix)]
     {
-        std::fs::symlink(src_path, link_path)
+        std::os::unix::fs::symlink(src_path, link_path)
     }
 }
 
@@ -196,9 +196,11 @@ pub(crate) fn extract_archive(
 
                 #[cfg(unix)]
                 {
+                    use std::os::unix::fs::PermissionsExt;
+
                     if let Some(mode) = file.unix_mode() {
-                        let permissions = fs::Permissions::from_mode(mode);
-                        fs::set_permissions(&out_path, permissions)?;
+                        let permissions = std::fs::Permissions::from_mode(mode);
+                        std::fs::set_permissions(&out_path, permissions)?;
                     }
                 }
             }

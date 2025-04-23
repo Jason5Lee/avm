@@ -20,12 +20,6 @@ jobs:
         uses: actions-rs/cargo@v1
         if: steps.cargo-cache.outputs.cache-hit != 'true'
         with:
-          args: --version
-
-      - name: cargo build | dependencies
-        uses: actions-rs/cargo@v1
-        if: steps.cargo-cache.outputs.cache-hit != 'true'
-        with:
           command: build
           args: --locked
 
