@@ -13,7 +13,7 @@ pub fn command(_info: &ToolInfo) -> clap::Command {
         .arg(
             clap::Arg::new("target_tag")
                 .value_name("target tag")
-                .help("The tag name to be copied")
+                .help("The destination tag")
                 .required(true),
         )
 }

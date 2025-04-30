@@ -40,7 +40,7 @@ pub struct ArchiveExtractInfo {
 }
 
 #[async_trait]
-pub trait DownloadExtractCustomAction {
+pub trait DownloadExtractCallback {
     async fn on_downloaded(&mut self, info: &ArchiveExtractInfo) -> anyhow::Result<()>;
     async fn on_extracted(&mut self, info: &ArchiveExtractInfo) -> anyhow::Result<()>;
 }
@@ -57,12 +57,12 @@ enum DownloadExtractStateInner {
         blocking::TmpDir,
         ArchiveExtractInfo,
         DownloadingState,
-        Box<dyn DownloadExtractCustomAction + Send>,
+        Box<dyn DownloadExtractCallback + Send>,
     ),
     Extracting(
         blocking::TmpDir,
         ArchiveExtractInfo,
-        Box<dyn DownloadExtractCustomAction + Send>,
+        Box<dyn DownloadExtractCallback + Send>,
     ),
     Stopped,
 }
@@ -73,7 +73,7 @@ impl DownloadExtractState {
         client: &HttpClient,
         url: &str,
         tmp_dir: PathBuf,
-        custom_action: Box<dyn DownloadExtractCustomAction + Send>,
+        custom_action: Box<dyn DownloadExtractCallback + Send>,
     ) -> anyhow::Result<Self> {
         let response = client.get(url).send().await?;
         if !response.status().is_success() {

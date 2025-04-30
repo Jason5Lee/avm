@@ -57,7 +57,7 @@ pub async fn run(
     let default = args.get_flag("default");
     let install_version = get_install_version(args);
 
-    let (target_tag, mut download_state) = general_tool::install(
+    let (target_tag, mut download_state) = general_tool::InstallArgs {
         tool,
         client,
         tools_base,
@@ -66,7 +66,8 @@ pub async fn run(
         install_version,
         update,
         default,
-    )
+    }
+    .install()
     .await?;
 
     log::info!("'{target_tag}' will be installed");

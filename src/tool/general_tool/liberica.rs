@@ -1,4 +1,5 @@
 use anyhow::Context;
+use async_trait::async_trait;
 use serde::Deserialize;
 use smol_str::{SmolStr, ToSmolStr};
 use std::path::{Path, PathBuf};
@@ -28,7 +29,15 @@ const FLAVOR: &[&str] = &[
 ];
 const BASE_URL: &str = "https://api.bell-sw.com/v1/";
 
-use async_trait::async_trait;
+struct FetchReleaseArgs<'a> {
+    client: &'a HttpClient,
+    cpu: &'a str,
+    os: &'a str,
+    bitness: u32,
+    flavor: &'a Flavor,
+    major_version: Option<SmolStr>,
+    version: Option<SmolStr>,
+}
 
 #[async_trait]
 impl crate::tool::GeneralTool for Tool {
@@ -46,20 +55,20 @@ impl crate::tool::GeneralTool for Tool {
         let (cpu, os, bitness) = self.get_dto_os_arch_bitness(&platform);
         let flavor = Flavor::parse(flavor.as_deref())?;
 
+        let args = FetchReleaseArgs {
+            client: &self.client,
+            cpu,
+            os,
+            bitness,
+            flavor: &flavor,
+            major_version,
+            version: None,
+        };
+
         let mut releases = if flavor.is_nik {
-            self.fetch_nik_releases(&self.client, cpu, os, bitness, &flavor, major_version, None)
-                .await?
+            self.fetch_nik_releases(args).await?
         } else {
-            self.fetch_liberica_releases(
-                &self.client,
-                cpu,
-                os,
-                bitness,
-                &flavor,
-                major_version,
-                None,
-            )
-            .await?
+            self.fetch_liberica_releases(args).await?
         };
 
         releases.sort_by(|a, b| b.version.cmp(&a.version));
@@ -93,28 +102,20 @@ impl crate::tool::GeneralTool for Tool {
             InstallVersion::Latest { major_version } => (Some(major_version), None),
             InstallVersion::Specific { version } => (None, Some(version)),
         };
+        let args = FetchReleaseArgs {
+            client: &self.client,
+            cpu,
+            os,
+            bitness,
+            flavor: &flavor,
+            major_version,
+            version,
+        };
+
         let mut releases = if flavor.is_nik {
-            self.fetch_nik_releases(
-                &self.client,
-                cpu,
-                os,
-                bitness,
-                &flavor,
-                major_version,
-                version,
-            )
-            .await?
+            self.fetch_nik_releases(args).await?
         } else {
-            self.fetch_liberica_releases(
-                &self.client,
-                cpu,
-                os,
-                bitness,
-                &flavor,
-                major_version,
-                version,
-            )
-            .await?
+            self.fetch_liberica_releases(args).await?
         };
 
         releases.sort_by(|a, b| b.version.cmp(&a.version));
@@ -127,7 +128,7 @@ impl crate::tool::GeneralTool for Tool {
                     ..Default::default()
                 },
             }),
-            None => Err(anyhow::anyhow!("No download URL found.")),
+            None => Err(anyhow::anyhow!("no download URL found.")),
         }
     }
 
@@ -231,26 +232,24 @@ These distributions are designed for building native executables from Java bytec
         self.corresponding_dto_os_arch_bitness[index]
     }
 
-    #[allow(clippy::too_many_arguments)] // for now
     async fn fetch_liberica_releases(
         &self,
-        client: &HttpClient,
-        cpu: &str,
-        os: &str,
-        bitness: u32,
-        flavor: &Flavor,
-        major_version: Option<SmolStr>,
-        version: Option<SmolStr>,
+        args: FetchReleaseArgs<'_>,
     ) -> anyhow::Result<Vec<ReleaseItem>> {
         let url = format!("{}liberica/releases", BASE_URL);
-        let mut request_builder =
-            self.build_parameters(client.get(&url), cpu, os, bitness, &flavor.bundle_type)?;
+        let mut request_builder = self.build_parameters(
+            args.client.get(&url),
+            args.cpu,
+            args.os,
+            args.bitness,
+            &args.flavor.bundle_type,
+        )?;
 
-        if let Some(major_version) = major_version {
+        if let Some(major_version) = args.major_version {
             request_builder = request_builder.query(&[("version-feature", &major_version)]);
         }
 
-        if let Some(ver) = version {
+        if let Some(ver) = args.version {
             request_builder = request_builder.query(&[("version", ver.as_str())]);
         }
 
@@ -264,22 +263,20 @@ These distributions are designed for building native executables from Java bytec
         Ok(response.into_iter().map(ReleaseItem::from).collect())
     }
 
-    #[allow(clippy::too_many_arguments)] // for now
     async fn fetch_nik_releases(
         &self,
-        client: &HttpClient,
-        cpu: &str,
-        os: &str,
-        bitness: u32,
-        flavor: &Flavor,
-        major_version: Option<SmolStr>,
-        version: Option<SmolStr>,
+        args: FetchReleaseArgs<'_>,
     ) -> anyhow::Result<Vec<ReleaseItem>> {
         let url = format!("{}nik/releases", BASE_URL);
-        let mut request_builder =
-            self.build_parameters(client.get(&url), cpu, os, bitness, &flavor.bundle_type)?;
+        let mut request_builder = self.build_parameters(
+            args.client.get(&url),
+            args.cpu,
+            args.os,
+            args.bitness,
+            &args.flavor.bundle_type,
+        )?;
 
-        if let Some(version) = version {
+        if let Some(version) = args.version {
             request_builder = request_builder.query(&[("version", format!("liberica@{version}"))]);
         }
 
@@ -290,12 +287,17 @@ These distributions are designed for building native executables from Java bytec
             .json::<Vec<NikReleaseItemDto>>()
             .await?;
 
-        let releases: Vec<ReleaseItem> = response
+        let releases = response
             .into_iter()
-            .map(ReleaseItem::try_from)
-            .collect::<Result<_, _>>()?;
+            .filter_map(|r| match ReleaseItem::try_from(r) {
+                Ok(release) => Some(release),
+                Err(e) => {
+                    log::error!("Failed to convert NikReleaseItemDto to ReleaseItem: {}", e);
+                    None
+                }
+            });
 
-        if let Some(major_version) = major_version {
+        if let Some(major_version) = args.major_version {
             let major_version = major_version
                 .parse::<i32>()
                 .context("Invalid major version")?;
@@ -304,7 +306,7 @@ These distributions are designed for building native executables from Java bytec
                 .filter(|r| r.version.major == major_version)
                 .collect())
         } else {
-            Ok(releases)
+            Ok(releases.collect())
         }
     }
 

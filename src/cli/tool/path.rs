@@ -6,7 +6,7 @@ pub const CMD: &str = "path";
 
 pub fn command() -> clap::Command {
     clap::Command::new(CMD)
-        .about("Get the path of a specific tag")
+        .about("Get the tool path of a specific tag")
         .arg(
             Arg::new("tag")
                 .help("Tag to get path for")

@@ -8,7 +8,7 @@ pub fn command(_info: &ToolInfo) -> clap::Command {
     clap::Command::new(CMD).about("Delete an existing tag").arg(
         clap::Arg::new("tag")
             .value_name("tag")
-            .help("The tag name to be deleted")
+            .help("The tag to be deleted")
             .required(true),
     )
 }
@@ -20,7 +20,7 @@ pub async fn run(
 ) -> anyhow::Result<()> {
     let tag_to_delete = args
         .get_one::<String>("tag")
-        .expect("Tag argument is required")
+        .expect("tag is required")
         .into();
 
     general_tool::delete_tag(tool, tools_base, tag_to_delete).await

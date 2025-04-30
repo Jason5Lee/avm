@@ -32,7 +32,7 @@ impl AvmApp {
     pub fn new() -> Self {
         Self {
             cmd: clap::Command::new("avm")
-                .about("Any Version Manager - manage several versions of the development tools for potentially any programming language")
+                .about("(Potentially) Any language Version Manager, a Command-Line Interface tool designed to manage multiple versions of development tools for potentially any programming language, maximizing code reuse.")
                 .version("0.1.0")
                 .subcommand_required(true)
                 .arg_required_else_help(true)

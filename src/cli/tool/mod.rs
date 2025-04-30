@@ -7,9 +7,9 @@ use smol_str::SmolStr;
 use crate::cli::Paths;
 
 mod alias;
-mod bin_path;
 mod copy;
 mod delete;
+mod exe_path;
 mod get_downinfo;
 mod get_vers;
 mod install;
@@ -32,7 +32,7 @@ pub fn command(info: &ToolInfo) -> clap::Command {
         .subcommand(install_local::command())
         .subcommand(list::command())
         .subcommand(path::command())
-        .subcommand(bin_path::command())
+        .subcommand(exe_path::command())
         .subcommand(run::command());
 
     if let Some(after_long_help) = &info.after_long_help {
@@ -58,7 +58,7 @@ pub async fn run(
         Some((install_local::CMD, args)) => install_local::run(tool, &paths.tool_dir, args).await,
         Some((list::CMD, _)) => list::run(tool, &paths.tool_dir).await,
         Some((path::CMD, args)) => path::run(tool, &paths.tool_dir, args),
-        Some((bin_path::CMD, args)) => bin_path::run(tool, &paths.tool_dir, args),
+        Some((exe_path::CMD, args)) => exe_path::run(tool, &paths.tool_dir, args),
         Some((run::CMD, args)) => run::run(tool, &paths.tool_dir, args).await,
         _ => unreachable!(),
     }
