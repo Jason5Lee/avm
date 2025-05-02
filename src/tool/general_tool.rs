@@ -1,5 +1,6 @@
 pub mod go;
 pub mod liberica;
+pub mod node;
 
 use crate::cli::AvmApp;
 use crate::io::{

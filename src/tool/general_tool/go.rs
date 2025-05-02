@@ -222,7 +222,7 @@ impl Tool {
         cpu: &str,
         os: &str,
         version: Option<InstallVersion>,
-    ) -> anyhow::Result<Vec<ReleaseItem>> {
+    ) -> anyhow::Result<Vec<VersionInfo>> {
         let response: Vec<GoDlDto> = client
             .get(BASE_URL)
             .query(&[("mode", "json"), ("include", "all")])
@@ -245,7 +245,7 @@ impl Tool {
             None => Box::new(|_, _| true),
         };
 
-        let releases: Vec<ReleaseItem> = response
+        let releases: Vec<VersionInfo> = response
             .into_iter()
             .filter_map(|r| {
                 let version = GoVersion::from_str(&r.version)
@@ -261,7 +261,7 @@ impl Tool {
                     .iter()
                     .find(|f| f.os == os && f.arch == cpu && f.kind == "archive")?;
 
-                Some(ReleaseItem {
+                Some(VersionInfo {
                     download_url: format!("{}/{}", BASE_URL, file.filename),
                     sha256: file.sha256.clone(),
                     version_raw: version_raw.into(),
@@ -275,7 +275,7 @@ impl Tool {
     }
 }
 
-struct ReleaseItem {
+struct VersionInfo {
     download_url: String,
     sha256: String,
     version_raw: SmolStr,
@@ -318,25 +318,6 @@ pub struct GoVersion {
     patch: u32,
     pre_release: PreRelease,
 }
-
-// /// Implements ordering for GoVersion.
-// /// Comparison happens field by field: major, minor, patch, pre_release.
-// impl Ord for GoVersion {
-//     fn cmp(&self, other: &Self) -> Ordering {
-//         self.major
-//             .cmp(&other.major)
-//             .then_with(|| self.minor.cmp(&other.minor))
-//             .then_with(|| self.patch.cmp(&other.patch))
-//             .then_with(|| self.pre_release.cmp(&other.pre_release))
-//     }
-// }
-
-// /// Implements partial ordering for GoVersion.
-// impl PartialOrd for GoVersion {
-//     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-//         Some(self.cmp(other))
-//     }
-// }
 
 /// Custom error type for parsing Go versions.
 #[derive(Debug, PartialEq, Eq)]
