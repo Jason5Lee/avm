@@ -249,7 +249,7 @@ impl Tool {
             .into_iter()
             .filter_map(|r| {
                 let version = GoVersion::from_str(&r.version)
-                    .map_err(|e| log::error!("failed to parse Go version: {}", e))
+                    .map_err(|e| log::error!("Failed to parse Go version: {}", e))
                     .ok()?;
                 let version_raw = &r.version[2..]; // strip "go" prefix
                 if !verify_version(version_raw, &version) {

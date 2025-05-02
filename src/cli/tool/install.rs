@@ -70,7 +70,7 @@ pub async fn run(
     .install()
     .await?;
 
-    log::info!("'{target_tag}' will be installed");
+    log::info!("\"{target_tag}\" will be installed");
     let mut prev_name: Option<SmolStr> = None;
     let mut pb: Option<ProgressBar> = None;
 

@@ -31,7 +31,6 @@ impl DownloadExtractCallback for InstallCustomAction {
             move || blocking::verify_hash(&hash, &archive_path)
         })
         .await?;
-        log::debug!("hash verification passed");
         Ok(())
     }
 
@@ -115,9 +114,9 @@ impl InstallArgs<'_> {
             anyhow::bail!("tag '{}' is reserved for temporary use", down_info.tag);
         }
         let tool_dir = self.tools_base.join(&self.tool.info().name);
-        log::debug!("tool dir: {}", tool_dir.display());
+        log::debug!("Tool dir: {}", tool_dir.display());
         let tag_dir = tool_dir.join(&down_info.tag);
-        log::debug!("tag dir: {}", tag_dir.display());
+        log::debug!("Tag dir: {}", tag_dir.display());
         let tag_dir = if self.update {
             tag_dir
         } else {
@@ -135,7 +134,7 @@ impl InstallArgs<'_> {
         };
 
         let tmp_dir = tool_dir.join(format!("{}{}", TMP_PREFIX, down_info.tag));
-        log::debug!("tmp dir: {}", tmp_dir.display());
+        log::debug!("Tmp dir: {}", tmp_dir.display());
         let (tmp_dir, exists) = crate::spawn_blocking(move || {
             let exists = tmp_dir.exists();
             Ok((tmp_dir, exists))
@@ -176,9 +175,9 @@ pub(crate) async fn install_from_archive(
         anyhow::bail!("tag '{}' is reserved for temporary use", target_tag);
     }
     let tool_dir = tools_base.join(&tool.info().name);
-    log::debug!("tool dir: {}", tool_dir.display());
+    log::debug!("Tool dir: {}", tool_dir.display());
     let tag_dir = tool_dir.join(target_tag);
-    log::debug!("tag dir: {}", tag_dir.display());
+    log::debug!("Tag dir: {}", tag_dir.display());
     let tag_dir = if update {
         tag_dir
     } else {
@@ -196,7 +195,7 @@ pub(crate) async fn install_from_archive(
     };
 
     let tmp_dir = tool_dir.join(format!("{}{}", TMP_PREFIX, target_tag));
-    log::debug!("tmp dir: {}", tmp_dir.display());
+    log::debug!("Tmp dir: {}", tmp_dir.display());
     let (tmp_dir, exists) = crate::spawn_blocking(move || {
         let exists = tmp_dir.exists();
         Ok((tmp_dir, exists))
@@ -318,8 +317,8 @@ pub async fn create_alias_tag(
     let tool_dir = tools_base.join(&tool.info().name);
     let src_path = tool_dir.join(&src_tag);
     let alias_path = tool_dir.join(&alias_tag);
-    log::debug!("alias src path: {}", src_path.display());
-    log::debug!("alias path: {}", alias_path.display());
+    log::debug!("Alias src path: {}", src_path.display());
+    log::debug!("Alias path: {}", alias_path.display());
 
     crate::spawn_blocking(move || {
         blocking::set_alias_tag(&src_tag, &src_path, &alias_tag, &alias_path)
@@ -340,8 +339,8 @@ pub async fn copy_tag(
 
     let src_path = tool_dir.join(&*src_tag);
     let dest_path = tool_dir.join(&*dest_tag);
-    log::debug!("copy src path: {}", src_path.display());
-    log::debug!("copy dest path: {}", dest_path.display());
+    log::debug!("Copy src path: {}", src_path.display());
+    log::debug!("Copy dest path: {}", dest_path.display());
 
     crate::spawn_blocking(move || {
         if !src_path.exists() {

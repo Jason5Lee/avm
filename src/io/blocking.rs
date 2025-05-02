@@ -17,7 +17,7 @@ impl TmpDir {
     fn remove(&self) {
         std::fs::remove_dir_all(&self.path).unwrap_or_else(|e| {
             log::error!(
-                "failed to remove directory '{}': {}",
+                "Failed to remove directory '{}': {}",
                 self.path.display(),
                 e
             );
@@ -28,7 +28,7 @@ impl TmpDir {
 impl Drop for TmpDir {
     fn drop(&mut self) {
         if self.should_not_block && !crate::is_cancelled() {
-            log::warn!("blocking remove: {}", self.path.display());
+            log::warn!("Blocking remove: {}", self.path.display());
         }
 
         self.remove();
@@ -184,7 +184,7 @@ pub(crate) fn verify_hash(hash: &FileHash, path: &Path) -> Result<(), anyhow::Er
         }
     }
 
-    log::debug!("hash verification passed");
+    log::debug!("Hash verification passed");
     Ok(())
 }
 
