@@ -7,6 +7,7 @@ use smol_str::SmolStr;
 use crate::cli::Paths;
 
 mod alias;
+mod clean;
 mod copy;
 mod delete;
 mod exe_path;
@@ -33,7 +34,8 @@ pub fn command(info: &ToolInfo) -> clap::Command {
         .subcommand(list::command())
         .subcommand(path::command())
         .subcommand(exe_path::command())
-        .subcommand(run::command());
+        .subcommand(run::command())
+        .subcommand(clean::command());
 
     if let Some(after_long_help) = &info.after_long_help {
         subcmd = subcmd.after_long_help(after_long_help.to_string());
@@ -60,6 +62,7 @@ pub async fn run(
         Some((path::CMD, args)) => path::run(tool, &paths.tool_dir, args),
         Some((exe_path::CMD, args)) => exe_path::run(tool, &paths.tool_dir, args),
         Some((run::CMD, args)) => run::run(tool, &paths.tool_dir, args).await,
+        Some((clean::CMD, _)) => clean::run(tool, &paths.tool_dir).await,
         _ => unreachable!(),
     }
 }

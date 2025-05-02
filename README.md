@@ -20,7 +20,6 @@
 * [x] Go
 * [ ] Node.js
 * [ ] Python
-* [ ] Gradle (download directly into )
 * [ ] Rust (proxy to rustup)
 * [ ] uv for Python (proxy)
 

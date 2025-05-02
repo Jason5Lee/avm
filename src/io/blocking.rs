@@ -55,12 +55,22 @@ pub fn create_link(src_path: &Path, link_path: &Path) -> std::io::Result<()> {
 }
 
 pub fn get_link_target(path: &Path) -> GetLinkResult<PathBuf> {
+    let not_link_error: Option<i32>;
+    #[cfg(windows)]
+    {
+        not_link_error = Some(4390);
+    }
+    #[cfg(not(windows))]
+    {
+        not_link_error = Some(22);
+    }
+
     match std::fs::read_link(path) {
         Ok(target) => GetLinkResult::Link(target),
         Err(err) => {
             if err.kind() == std::io::ErrorKind::NotFound {
                 GetLinkResult::NotFound
-            } else if err.raw_os_error() == Some(4390) {
+            } else if err.raw_os_error() == not_link_error {
                 GetLinkResult::NotLink
             } else {
                 GetLinkResult::Err(err)
@@ -117,7 +127,11 @@ pub fn set_alias_tag(
     Ok(())
 }
 
-pub fn list_tags(path: &Path) -> std::io::Result<Vec<(SmolStr, Option<SmolStr>)>> {
+pub fn list_tags(
+    path: &Path,
+    ignore_prefix: &str,
+) -> std::io::Result<Vec<(SmolStr, Option<SmolStr>)>> {
+    log::debug!("Listing tags in: {}", path.display());
     let mut tags = Vec::new();
     let entries = match std::fs::read_dir(path) {
         Ok(entries) => entries,
@@ -131,7 +145,10 @@ pub fn list_tags(path: &Path) -> std::io::Result<Vec<(SmolStr, Option<SmolStr>)>
 
     for entry in entries {
         let entry = entry?;
-        let file_name = entry.file_name().to_string_lossy().into();
+        let file_name: SmolStr = entry.file_name().to_string_lossy().into();
+        if file_name.starts_with(ignore_prefix) {
+            continue;
+        }
         match get_link_target(&entry.path()) {
             GetLinkResult::NotFound => {}
             GetLinkResult::Err(err) => return Err(err),
