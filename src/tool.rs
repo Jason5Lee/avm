@@ -1,24 +1,18 @@
 pub mod general_tool;
-use std::path::{Path, PathBuf};
+use std::{future::Future, path::PathBuf};
 
 use serde::Serialize;
 use smol_str::{SmolStr, SmolStrBuilder};
-
-// Define Paths struct here
-#[derive(Clone)] // Add Clone derive for use in async block
-pub struct Paths {
-    pub tool_dir: PathBuf,
-}
 
 pub struct ToolInfo {
     pub name: SmolStr,
     pub about: SmolStr,
     pub after_long_help: Option<SmolStr>,
+    // If None, it means the tool doesn't have distinct platforms/flavors.
     pub all_platforms: Option<Vec<SmolStr>>,
     pub default_platform: Option<SmolStr>,
     pub all_flavors: Option<Vec<SmolStr>>,
     pub default_flavor: Option<SmolStr>,
-    pub version_is_major: bool,
 }
 
 pub struct Version {
@@ -27,9 +21,11 @@ pub struct Version {
     pub is_lts: bool,
 }
 
-pub enum InstallVersion {
-    Latest { major_version: SmolStr },
-    Specific { version: SmolStr },
+/// Version filter for selecting version.
+pub struct VersionFilter {
+    pub lts_only: bool,
+    pub major_version: Option<SmolStr>,
+    pub exact_version: Option<SmolStr>,
 }
 
 pub struct ToolDownInfo {
@@ -71,20 +67,19 @@ impl DownInfo {
     }
 }
 
-#[async_trait::async_trait]
-pub trait GeneralTool {
+pub trait GeneralTool: Send + Sync {
     fn info(&self) -> &ToolInfo;
-    async fn fetch_versions(
+    fn fetch_versions(
         &self,
         platform: Option<SmolStr>,
         flavor: Option<SmolStr>,
-        major_version: Option<SmolStr>,
-    ) -> anyhow::Result<Vec<Version>>;
-    async fn get_down_info(
+        version_filter: VersionFilter,
+    ) -> impl Future<Output = anyhow::Result<Vec<Version>>> + Send;
+    fn get_down_info(
         &self,
         platform: Option<SmolStr>,
         flavor: Option<SmolStr>,
-        version: InstallVersion,
-    ) -> anyhow::Result<ToolDownInfo>;
-    fn bin_path(&self, instance_dir: &Path) -> anyhow::Result<PathBuf>;
+        version_filter: VersionFilter,
+    ) -> impl Future<Output = anyhow::Result<ToolDownInfo>> + Send;
+    fn exe_path(&self, tag_dir: PathBuf) -> anyhow::Result<PathBuf>;
 }

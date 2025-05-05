@@ -5,7 +5,6 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::{path::PathBuf, sync::atomic::AtomicBool};
 
-pub mod cli;
 pub mod io;
 pub mod platform;
 pub mod tool;
@@ -25,6 +24,12 @@ pub struct Config {
     #[serde(flatten)]
     pub mirror: Option<UrlMirror>,
     pub data_path: Option<PathBuf>,
+    pub rustup: Option<RustupConfig>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct RustupConfig {
+    pub path: Option<PathBuf>,
 }
 
 pub async fn spawn_blocking<T: Send + 'static>(
@@ -72,6 +77,14 @@ pub enum Status {
     Stopped,
 }
 
+#[derive(Clone, Default, Deserialize, Serialize)]
+pub struct FileHash {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sha1: Option<SmolStr>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sha256: Option<SmolStr>,
+}
+
 static CANCELLED: AtomicBool = AtomicBool::new(false);
 
 pub fn set_cancelled() {
@@ -110,12 +123,4 @@ where
             }
         }
     }
-}
-
-#[derive(Clone, Default, Deserialize, Serialize)]
-pub struct FileHash {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    sha1: Option<SmolStr>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    sha256: Option<SmolStr>,
 }

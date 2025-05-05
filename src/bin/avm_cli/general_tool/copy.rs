@@ -1,6 +1,6 @@
-use crate::tool::general_tool;
-use crate::tool::GeneralTool;
-use crate::tool::ToolInfo;
+use any_version_manager::tool::general_tool;
+use any_version_manager::tool::GeneralTool;
+use any_version_manager::tool::ToolInfo;
 
 use super::{get_src_tag, src_tag_arg};
 
@@ -19,7 +19,7 @@ pub fn command(_info: &ToolInfo) -> clap::Command {
 }
 
 pub async fn run(
-    tool: &dyn GeneralTool,
+    tool: &impl GeneralTool,
     tools_base: &std::path::Path,
     args: &clap::ArgMatches,
 ) -> anyhow::Result<()> {

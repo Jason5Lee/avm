@@ -44,14 +44,10 @@ pub enum GetLinkResult<R> {
 
 pub fn create_link(src_path: &Path, link_path: &Path) -> std::io::Result<()> {
     #[cfg(windows)]
-    {
-        junction::create(src_path, link_path)
-    }
+    return junction::create(src_path, link_path);
 
     #[cfg(unix)]
-    {
-        std::os::unix::fs::symlink(src_path, link_path)
-    }
+    return std::os::unix::fs::symlink(src_path, link_path);
 }
 
 pub fn get_link_target(path: &Path) -> GetLinkResult<PathBuf> {
@@ -105,7 +101,7 @@ pub fn set_alias_tag(
     alias_path: &Path,
 ) -> anyhow::Result<()> {
     if !src_path.exists() {
-        anyhow::bail!("src tag '{src_tag}' not found");
+        anyhow::bail!("Src tag \"{src_tag}\" not found");
     }
 
     match check_is_link(alias_path) {
@@ -114,11 +110,11 @@ pub fn set_alias_tag(
         }
         GetLinkResult::NotFound => {}
         GetLinkResult::NotLink => {
-            anyhow::bail!("alias tag '{alias_tag}' exists and is not an alias");
+            anyhow::bail!("Alias tag \"{alias_tag}\" exists and is not an alias");
         }
         GetLinkResult::Err(err) => {
             return Err(err)
-                .with_context(|| anyhow::anyhow!("failed to check alias tag '{alias_tag}'"));
+                .with_context(|| anyhow::anyhow!("Failed to check alias tag '{alias_tag}'"));
         }
     }
 
@@ -170,7 +166,7 @@ pub(crate) fn verify_hash(hash: &FileHash, path: &Path) -> Result<(), anyhow::Er
         let mut hasher = sha1::Sha1::new();
         std::io::copy(&mut file, &mut hasher)?;
         if hasher.finalize().as_slice() != sha1_bytes.as_slice() {
-            anyhow::bail!("sha1 verification failed");
+            anyhow::bail!("Sha1 verification failed");
         }
     }
 
@@ -180,7 +176,7 @@ pub(crate) fn verify_hash(hash: &FileHash, path: &Path) -> Result<(), anyhow::Er
         let mut hasher = sha2::Sha256::new();
         std::io::copy(&mut file, &mut hasher)?;
         if hasher.finalize().as_slice() != sha256_bytes.as_slice() {
-            anyhow::bail!("sha256 verification failed");
+            anyhow::bail!("Sha256 verification failed");
         }
     }
 
@@ -238,6 +234,17 @@ pub(crate) fn extract_archive(
             archive.unpack(extracted_dir).with_context(|| {
                 anyhow::anyhow!(
                     "Failed to unpack tar.gz archive '{}' into '{}'.",
+                    archive_path.display(),
+                    extracted_dir.display()
+                )
+            })?;
+        }
+        super::ArchiveType::TarXz => {
+            let tar_xz_reader = xz2::read::XzDecoder::new(archive_file);
+            let mut archive = tar::Archive::new(tar_xz_reader);
+            archive.unpack(extracted_dir).with_context(|| {
+                anyhow::anyhow!(
+                    "Failed to unpack tar.xz archive '{}' into '{}'.",
                     archive_path.display(),
                     extracted_dir.display()
                 )

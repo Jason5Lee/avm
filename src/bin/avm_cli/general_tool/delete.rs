@@ -1,6 +1,8 @@
-use crate::tool::general_tool;
-use crate::tool::GeneralTool;
-use crate::tool::ToolInfo;
+use smol_str::SmolStr;
+
+use any_version_manager::tool::general_tool;
+use any_version_manager::tool::GeneralTool;
+use any_version_manager::tool::ToolInfo;
 
 pub const CMD: &str = "delete";
 
@@ -10,8 +12,9 @@ pub fn command(_info: &ToolInfo) -> clap::Command {
         .arg(
             clap::Arg::new("tag")
                 .value_name("tag")
-                .help("The tag to be deleted")
-                .required(true),
+                .help("The tag(s) to be deleted")
+                .required(true)
+                .num_args(1..),
         )
         .arg(
             clap::Arg::new("allow-dangling")
@@ -22,14 +25,15 @@ pub fn command(_info: &ToolInfo) -> clap::Command {
 }
 
 pub async fn run(
-    tool: &dyn GeneralTool,
+    tool: &impl GeneralTool,
     tools_base: &std::path::Path,
     args: &clap::ArgMatches,
 ) -> anyhow::Result<()> {
-    let tag_to_delete = args
-        .get_one::<String>("tag")
+    let tags_to_delete = args
+        .get_many::<String>("tag")
         .expect("tag is required")
-        .into();
+        .map(SmolStr::from)
+        .collect::<Vec<_>>();
     let allow_dangling = args.get_flag("allow-dangling");
-    general_tool::delete_tag(tool, tools_base, tag_to_delete, allow_dangling).await
+    general_tool::delete_tag(tool, tools_base, tags_to_delete, allow_dangling).await
 }

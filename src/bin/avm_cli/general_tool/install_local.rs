@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
-use crate::tool::general_tool;
-use crate::tool::GeneralTool;
+use any_version_manager::tool::general_tool;
+use any_version_manager::tool::GeneralTool;
 
 pub const CMD: &str = "install-local";
 
@@ -44,7 +44,7 @@ pub fn command() -> clap::Command {
 }
 
 pub async fn run(
-    tool: &dyn GeneralTool,
+    tool: &impl GeneralTool,
     tools_base: &std::path::Path,
     args: &clap::ArgMatches,
 ) -> anyhow::Result<()> {

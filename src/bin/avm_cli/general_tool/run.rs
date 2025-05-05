@@ -1,4 +1,4 @@
-use crate::tool::{general_tool, GeneralTool};
+use any_version_manager::tool::{general_tool, GeneralTool};
 use clap::Arg;
 
 pub const CMD: &str = "run";
@@ -17,7 +17,7 @@ pub fn command() -> clap::Command {
 }
 
 pub async fn run(
-    tool: &dyn GeneralTool,
+    tool: &impl GeneralTool,
     tools_base: &std::path::Path,
     args: &clap::ArgMatches,
 ) -> anyhow::Result<()> {
@@ -28,5 +28,10 @@ pub async fn run(
         .cloned()
         .collect();
 
-    general_tool::run(tool, tools_base, tag, tool_args).await
+    let mut command = general_tool::run_command(tool, tools_base, tag, tool_args).await?;
+    any_version_manager::spawn_blocking(move || {
+        command.spawn()?.wait()?;
+        Ok(())
+    })
+    .await
 }

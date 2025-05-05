@@ -18,10 +18,15 @@
 
 * [x] Liberica JDK/JRE
 * [x] Go
-* [ ] Node.js
+* [x] Node.js
 * [ ] Python
-* [ ] Rust (proxy to rustup)
-* [ ] uv for Python (proxy)
+* [ ] Rustup
+  * [x] Rustup delegate
+  * [ ] Install rustup if not found
+  * [ ] Install MSVC toolchain on Windows if not found
+* [ ] uv for Python
+  * [ ] uv delegate
+  * [ ] Install uv if not found
 
 ## Configuration
 
@@ -35,5 +40,7 @@ mirror: # optional: Define download mirrors
     to: https://mirror-prefix.com/c/d # e.g., https://original-prefix.com/a/b/e/f becomes https://mirror-prefix.com/c/d/e/f
   # - ... more mirror rules
 dataPath: /path/to/data # Optional: Directory to store downloaded tools. Uses an OS-specific default if omitted.
+rustup:
+  path: /path/to/rustup # Optional: Path to rustup executable.
 ```
 

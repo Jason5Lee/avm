@@ -2,18 +2,19 @@ pub mod go;
 pub mod liberica;
 pub mod node;
 
-use crate::cli::AvmApp;
 use crate::io::{
     blocking, ArchiveExtractInfo, ArchiveType, DownloadExtractCallback, DownloadExtractState,
 };
-use crate::tool::{GeneralTool, InstallVersion};
+use crate::tool::{GeneralTool, VersionFilter};
 use crate::HttpClient;
 use async_trait::async_trait;
+use fxhash::FxHashSet;
 use smol_str::SmolStr;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 const TMP_PREFIX: &str = ".tmp.";
+const DEFAULT_TAG: &str = "default";
 
 struct InstallCustomAction {
     hash: crate::FileHash,
@@ -68,15 +69,10 @@ impl DownloadExtractCallback for InstallCustomAction {
         .await?;
 
         if self.default {
-            let default_path = self.tool_dir.join(AvmApp::DEFAULT_TAG);
+            let default_path = self.tool_dir.join(DEFAULT_TAG);
             let target_tag = self.target_tag.clone();
             crate::spawn_blocking(move || {
-                blocking::set_alias_tag(
-                    &target_tag,
-                    &target_dir,
-                    AvmApp::DEFAULT_TAG,
-                    &default_path,
-                )
+                blocking::set_alias_tag(&target_tag, &target_dir, DEFAULT_TAG, &default_path)
             })
             .await?;
         }
@@ -85,18 +81,18 @@ impl DownloadExtractCallback for InstallCustomAction {
     }
 }
 
-pub struct InstallArgs<'a> {
-    pub tool: &'a dyn GeneralTool,
+pub struct InstallArgs<'a, T: GeneralTool> {
+    pub tool: &'a T,
     pub client: &'a HttpClient,
     pub tools_base: &'a Path,
     pub platform: Option<SmolStr>,
     pub flavor: Option<SmolStr>,
-    pub install_version: InstallVersion,
+    pub install_version: VersionFilter,
     pub update: bool,
     pub default: bool,
 }
 
-impl InstallArgs<'_> {
+impl<T: GeneralTool> InstallArgs<'_, T> {
     pub async fn install(self) -> anyhow::Result<(SmolStr, DownloadExtractState)> {
         let down_info = self
             .tool
@@ -112,7 +108,7 @@ impl InstallArgs<'_> {
             self.flavor.as_deref(),
         );
         if down_info.tag.starts_with(TMP_PREFIX) {
-            anyhow::bail!("tag '{}' is reserved for temporary use", down_info.tag);
+            anyhow::bail!("Tag \"{}\" is reserved for temporary use", down_info.tag);
         }
         let tool_dir = self.tools_base.join(&self.tool.info().name);
         log::debug!("Tool dir: {}", tool_dir.display());
@@ -163,8 +159,8 @@ impl InstallArgs<'_> {
     }
 }
 
-pub(crate) async fn install_from_archive(
-    tool: &dyn GeneralTool,
+pub async fn install_from_archive(
+    tool: &impl GeneralTool,
     tools_base: &Path,
     archive: PathBuf,
     target_tag: &str,
@@ -173,7 +169,7 @@ pub(crate) async fn install_from_archive(
     default: bool,
 ) -> anyhow::Result<()> {
     if target_tag.starts_with(TMP_PREFIX) {
-        anyhow::bail!("tag '{}' is reserved for temporary use", target_tag);
+        anyhow::bail!("Tag '{}' is reserved for temporary use", target_tag);
     }
     let tool_dir = tools_base.join(&tool.info().name);
     log::debug!("Tool dir: {}", tool_dir.display());
@@ -230,10 +226,10 @@ pub(crate) async fn install_from_archive(
     .await?;
 
     if default {
-        let default_path = tool_dir.join(AvmApp::DEFAULT_TAG);
+        let default_path = tool_dir.join(DEFAULT_TAG);
         let target_tag = target_tag.to_owned();
         crate::spawn_blocking(move || {
-            blocking::set_alias_tag(&target_tag, &tag_dir, AvmApp::DEFAULT_TAG, &default_path)
+            blocking::set_alias_tag(&target_tag, &tag_dir, DEFAULT_TAG, &default_path)
         })
         .await?;
     }
@@ -242,13 +238,13 @@ pub(crate) async fn install_from_archive(
 }
 
 pub async fn get_downinfo(
-    tool: &dyn GeneralTool,
+    tool: &impl GeneralTool,
     platform: Option<SmolStr>,
     flavor: Option<SmolStr>,
-    install_version: InstallVersion,
+    version_filter: VersionFilter,
 ) -> anyhow::Result<super::DownInfo> {
     let down_info = tool
-        .get_down_info(platform.clone(), flavor.clone(), install_version)
+        .get_down_info(platform.clone(), flavor.clone(), version_filter)
         .await?;
     let down_info =
         super::DownInfo::from_tool_down_info(down_info, platform.as_deref(), flavor.as_deref());
@@ -256,53 +252,57 @@ pub async fn get_downinfo(
 }
 
 pub async fn get_vers(
-    tool: &dyn GeneralTool,
+    tool: &impl GeneralTool,
     platform: Option<SmolStr>,
     flavor: Option<SmolStr>,
-    major_version: Option<SmolStr>,
+    version_filter: VersionFilter,
 ) -> anyhow::Result<Vec<super::Version>> {
-    tool.fetch_versions(platform, flavor, major_version).await
+    tool.fetch_versions(platform, flavor, version_filter).await
 }
 
 pub async fn delete_tag(
-    tool: &dyn GeneralTool,
+    tool: &impl GeneralTool,
     tools_base: &Path,
-    tag_to_delete: SmolStr,
+    tags_to_delete: Vec<SmolStr>,
     allow_dangling: bool,
 ) -> anyhow::Result<()> {
     let tool_dir = tools_base.join(&tool.info().name);
+    let tags_set = tags_to_delete.iter().cloned().collect::<FxHashSet<_>>();
 
     crate::spawn_blocking(move || {
         if !allow_dangling {
             // Check if the tag is an alias target
             for (tag, alias_tag) in blocking::list_tags(&tool_dir, TMP_PREFIX)? {
-                if alias_tag.as_ref() == Some(&tag_to_delete) {
-                    anyhow::bail!(
-                        "tag \"{}\" is an alias target of \"{}\", delete the alias first",
-                        tag_to_delete,
-                        tag
-                    );
+                if let Some(alias_tag) = alias_tag {
+                    if !tags_set.contains(&tag) && tags_set.contains(&alias_tag) {
+                        anyhow::bail!(
+                            "Tag \"{}\" is an alias target of \"{}\", delete the alias first",
+                            alias_tag,
+                            tag
+                        );
+                    }
                 }
             }
         }
 
-        let tag_dir = tool_dir.join(&*tag_to_delete);
-        // Attempt to remove the directory
-        std::fs::remove_dir_all(&tag_dir).map_err(|err| {
-            if err.kind() == std::io::ErrorKind::NotFound {
-                anyhow::anyhow!("tag '{}' not found", tag_to_delete)
-            } else {
-                anyhow::Error::from(err)
-                    .context(format!("failed to delete tag '{}'", tag_to_delete))
-            }
-        })?;
+        for tag in tags_to_delete {
+            let tag_dir = tool_dir.join(&*tag);
+            // Attempt to remove the directory
+            std::fs::remove_dir_all(&tag_dir).map_err(|err| {
+                if err.kind() == std::io::ErrorKind::NotFound {
+                    anyhow::anyhow!("Tag \"{}\" not found", tag)
+                } else {
+                    anyhow::Error::from(err).context(format!("Failed to delete tag \"{}\"", tag))
+                }
+            })?;
+        }
         Ok(())
     })
     .await
 }
 
 pub async fn list_tags(
-    tool: &dyn GeneralTool,
+    tool: &impl GeneralTool,
     tools_base: &Path,
 ) -> anyhow::Result<Vec<(SmolStr, Option<SmolStr>)>> {
     let tool_dir = tools_base.join(&tool.info().name);
@@ -310,7 +310,7 @@ pub async fn list_tags(
 }
 
 pub async fn create_alias_tag(
-    tool: &dyn GeneralTool,
+    tool: &impl GeneralTool,
     tools_base: &Path,
     src_tag: SmolStr,
     alias_tag: SmolStr,
@@ -328,14 +328,14 @@ pub async fn create_alias_tag(
 }
 
 pub async fn copy_tag(
-    tool: &dyn GeneralTool,
+    tool: &impl GeneralTool,
     tools_base: &Path,
     src_tag: SmolStr,
     dest_tag: SmolStr,
 ) -> anyhow::Result<()> {
     let tool_dir = tools_base.join(&tool.info().name);
-    if dest_tag == crate::cli::AvmApp::DEFAULT_TAG {
-        anyhow::bail!("default tag is only allowed as an alias tag");
+    if dest_tag == DEFAULT_TAG {
+        anyhow::bail!("\"{DEFAULT_TAG}\" tag is only allowed as an alias tag");
     }
 
     let src_path = tool_dir.join(&*src_tag);
@@ -345,10 +345,10 @@ pub async fn copy_tag(
 
     crate::spawn_blocking(move || {
         if !src_path.exists() {
-            anyhow::bail!("src tag '{}' not found", src_tag);
+            anyhow::bail!("Src tag \"{}\" not found", src_tag);
         }
         if dest_path.exists() {
-            anyhow::bail!("dest tag '{}' already exists", dest_tag);
+            anyhow::bail!("Dest tag \"{}\" already exists", dest_tag);
         }
 
         let copy_options = fs_extra::dir::CopyOptions::new();
@@ -359,44 +359,40 @@ pub async fn copy_tag(
 }
 
 pub fn get_tag_path(
-    tool: &dyn GeneralTool,
+    tool: &impl GeneralTool,
     tools_base: &Path,
     tag: &str,
 ) -> anyhow::Result<PathBuf> {
     let tag_path = tools_base.join(&tool.info().name).join(tag);
     if !tag_path.exists() {
-        anyhow::bail!("tag '{}' not found", tag);
+        anyhow::bail!("Tag \"{}\" not found", tag);
     }
     Ok(tag_path)
 }
 
 pub fn get_exe_path(
-    tool: &dyn GeneralTool,
+    tool: &impl GeneralTool,
     tools_base: &Path,
     tag: &str,
 ) -> anyhow::Result<PathBuf> {
     let tag_dir = get_tag_path(tool, tools_base, tag)?;
-    tool.bin_path(&tag_dir)
+    tool.exe_path(tag_dir)
 }
 
-pub async fn run(
-    tool: &dyn GeneralTool,
+pub async fn run_command(
+    tool: &impl GeneralTool,
     tools_base: &Path,
     tag: &str,
     args: Vec<OsString>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<std::process::Command> {
     let bin_path = get_exe_path(tool, tools_base, tag)?;
     let mut command = std::process::Command::new(bin_path);
     command.args(args);
-    crate::spawn_blocking(move || {
-        command.spawn()?.wait()?;
-        Ok(())
-    })
-    .await
+    Ok(command)
 }
 
 /// Clean up the temporary directories and dangling alias tags
-pub async fn clean(tool: &dyn GeneralTool, tools_base: &Path) -> anyhow::Result<()> {
+pub async fn clean(tool: &impl GeneralTool, tools_base: &Path) -> anyhow::Result<()> {
     let tool_dir = tools_base.join(&tool.info().name);
 
     crate::spawn_blocking(move || {
@@ -418,7 +414,7 @@ pub async fn clean(tool: &dyn GeneralTool, tools_base: &Path) -> anyhow::Result<
             }
         };
 
-        log::info!("Cleaning up tool directory: {}", tool_dir.display());
+        log::debug!("Cleaning up tool directory: {}", tool_dir.display());
 
         for entry_result in entries {
             let entry = match entry_result {
@@ -437,9 +433,9 @@ pub async fn clean(tool: &dyn GeneralTool, tools_base: &Path) -> anyhow::Result<
             let file_name = entry.file_name();
             let file_name_str = file_name.to_string_lossy();
 
-            // 1. Clean temporary directories
+            // Clean temporary directories
             if file_name_str.starts_with(TMP_PREFIX) {
-                log::info!("Removing temporary directory: {}", entry_path.display());
+                log::debug!("Removing temporary directory: {}", entry_path.display());
                 if let Err(err) = std::fs::remove_dir_all(&entry_path) {
                     log::warn!(
                         "Failed to remove temporary directory {}: {}",
@@ -450,14 +446,14 @@ pub async fn clean(tool: &dyn GeneralTool, tools_base: &Path) -> anyhow::Result<
                 continue; // Move to the next entry
             }
 
-            // 2. Check for dangling aliases (symlinks)
+            // Check for dangling aliases (symlinks)
             match std::fs::symlink_metadata(&entry_path) {
                 Ok(metadata) => {
                     if metadata.file_type().is_symlink() {
                         // Check if the target exists. We use metadata() which follows the link.
                         // If it fails (e.g., NotFound), the link is dangling.
                         if std::fs::metadata(&entry_path).is_err() {
-                            log::info!("Removing dangling alias '{}'", entry_path.display(),);
+                            log::debug!("Removing dangling alias '{}'", entry_path.display());
                             // Use remove_file to remove dangling symlinks
                             if let Err(err) = std::fs::remove_file(&entry_path) {
                                 log::warn!(
@@ -481,7 +477,7 @@ pub async fn clean(tool: &dyn GeneralTool, tools_base: &Path) -> anyhow::Result<
                 }
             }
         }
-        log::info!("Finished cleaning up {}", tool_dir.display());
+        log::debug!("Finished cleaning up {}", tool_dir.display());
         Ok(())
     })
     .await

@@ -1,14 +1,14 @@
 use anyhow::Context;
-use async_trait::async_trait;
+use fxhash::FxHashSet;
 use serde::Deserialize;
 use smol_str::{SmolStr, ToSmolStr};
-use std::path::{Path, PathBuf};
-use std::{collections::HashSet, sync::Arc};
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::HttpClient;
 use crate::{
     platform::{cpu, create_platform_string, current_cpu, current_os, os},
-    tool::{InstallVersion, ToolDownInfo, ToolInfo, Version},
+    tool::{ToolDownInfo, ToolInfo, Version, VersionFilter},
 };
 
 pub struct Tool {
@@ -35,11 +35,9 @@ struct FetchReleaseArgs<'a> {
     os: &'a str,
     bitness: u32,
     flavor: &'a Flavor,
-    major_version: Option<SmolStr>,
-    version: Option<SmolStr>,
+    version_filter: VersionFilter,
 }
 
-#[async_trait]
 impl crate::tool::GeneralTool for Tool {
     fn info(&self) -> &ToolInfo {
         &self.info
@@ -49,7 +47,7 @@ impl crate::tool::GeneralTool for Tool {
         &self,
         platform: Option<SmolStr>,
         flavor: Option<SmolStr>,
-        major_version: Option<SmolStr>,
+        version_filter: VersionFilter,
     ) -> anyhow::Result<Vec<Version>> {
         let platform = platform.ok_or_else(|| anyhow::anyhow!("Platform is required"))?;
         let (cpu, os, bitness) = self.get_dto_os_arch_bitness(&platform);
@@ -61,8 +59,7 @@ impl crate::tool::GeneralTool for Tool {
             os,
             bitness,
             flavor: &flavor,
-            major_version,
-            version: None,
+            version_filter,
         };
 
         let mut releases = if flavor.is_nik {
@@ -71,9 +68,9 @@ impl crate::tool::GeneralTool for Tool {
             self.fetch_liberica_releases(args).await?
         };
 
-        releases.sort_by(|a, b| b.version.cmp(&a.version));
+        releases.sort_by(|a, b| a.version.cmp(&b.version));
         let mut versions = Vec::new();
-        let mut version_set = HashSet::new();
+        let mut version_set = FxHashSet::default();
         for release in releases {
             let version_raw = SmolStr::new(release.version_raw);
             if version_set.insert(version_raw.clone()) {
@@ -92,24 +89,19 @@ impl crate::tool::GeneralTool for Tool {
         &self,
         platform: Option<SmolStr>,
         flavor: Option<SmolStr>,
-        version: InstallVersion,
+        version_filter: VersionFilter,
     ) -> anyhow::Result<ToolDownInfo> {
         let platform = platform.ok_or_else(|| anyhow::anyhow!("Platform is required"))?;
         let (cpu, os, bitness) = self.get_dto_os_arch_bitness(&platform);
         let flavor = Flavor::parse(flavor.as_deref())?;
 
-        let (major_version, version) = match version {
-            InstallVersion::Latest { major_version } => (Some(major_version), None),
-            InstallVersion::Specific { version } => (None, Some(version)),
-        };
         let args = FetchReleaseArgs {
             client: &self.client,
             cpu,
             os,
             bitness,
             flavor: &flavor,
-            major_version,
-            version,
+            version_filter,
         };
 
         let mut releases = if flavor.is_nik {
@@ -118,23 +110,30 @@ impl crate::tool::GeneralTool for Tool {
             self.fetch_liberica_releases(args).await?
         };
 
+        // Ensure the latest version is first
         releases.sort_by(|a, b| b.version.cmp(&a.version));
-        match releases.into_iter().next() {
-            Some(item) => Ok(ToolDownInfo {
-                version: item.version_raw.into(),
-                url: item.download_url.into(),
+        if let Some(release) = releases.into_iter().next() {
+            Ok(ToolDownInfo {
+                version: release.version_raw.into(),
+                url: release.download_url.into(),
                 hash: crate::FileHash {
-                    sha1: Some(item.sha1.into()),
+                    sha1: Some(release.sha1.into()),
                     ..Default::default()
                 },
-            }),
-            None => Err(anyhow::anyhow!("no download URL found.")),
+            })
+        } else {
+            Err(anyhow::anyhow!("No download URL found."))
         }
     }
 
-    fn bin_path(&self, instance_dir: &Path) -> anyhow::Result<PathBuf> {
-        let java_path = instance_dir.join("bin").join("java");
-        Ok(java_path)
+    fn exe_path(&self, tag_dir: PathBuf) -> anyhow::Result<PathBuf> {
+        let mut p = tag_dir;
+        p.push("bin");
+        #[cfg(windows)]
+        p.push("java.exe");
+        #[cfg(not(windows))]
+        p.push("java");
+        Ok(p)
     }
 }
 
@@ -178,7 +177,6 @@ These distributions are designed for building native executables from Java bytec
                 default_platform,
                 all_flavors: Some(all_flavors),
                 default_flavor: Some("jdk".into()),
-                version_is_major: false,
             },
             corresponding_dto_os_arch_bitness,
         }
@@ -245,13 +243,18 @@ These distributions are designed for building native executables from Java bytec
             &args.flavor.bundle_type,
         )?;
 
-        if let Some(major_version) = args.major_version {
+        if let Some(major_version) = args.version_filter.major_version {
             request_builder = request_builder.query(&[("version-feature", &major_version)]);
         }
-
-        if let Some(ver) = args.version {
-            request_builder = request_builder.query(&[("version", ver.as_str())]);
+        if let Some(exact_version) = args.version_filter.exact_version {
+            request_builder = request_builder.query(&[("version", &exact_version)]);
         }
+        let release_type = if args.version_filter.lts_only {
+            "lts"
+        } else {
+            "all"
+        };
+        request_builder = request_builder.query(&[("release-type", release_type)]);
 
         let response: Vec<ReleaseItemDto> = request_builder
             .send()
@@ -276,9 +279,12 @@ These distributions are designed for building native executables from Java bytec
             &args.flavor.bundle_type,
         )?;
 
-        if let Some(version) = args.version {
-            request_builder = request_builder.query(&[("version", format!("liberica@{version}"))]);
-        }
+        let release_type = if args.version_filter.lts_only {
+            "lts"
+        } else {
+            "all"
+        };
+        request_builder = request_builder.query(&[("release-type", release_type)]);
 
         let response = request_builder
             .send()
@@ -297,13 +303,28 @@ These distributions are designed for building native executables from Java bytec
                 }
             });
 
-        if let Some(major_version) = args.major_version {
-            let major_version = major_version
-                .parse::<i32>()
-                .context("Invalid major version")?;
+        let major_version = args
+            .version_filter
+            .major_version
+            .map(|v| v.parse::<u32>().context("Invalid major version"))
+            .transpose()?;
+        if args.version_filter.exact_version.is_some() || major_version.is_some() {
             Ok(releases
                 .into_iter()
-                .filter(|r| r.version.major == major_version)
+                .filter(|r| {
+                    if major_version.is_some_and(|v| r.version.major != v) {
+                        return false;
+                    }
+                    if args
+                        .version_filter
+                        .exact_version
+                        .as_ref()
+                        .is_some_and(|v| r.version_raw != *v)
+                    {
+                        return false;
+                    }
+                    true
+                })
                 .collect())
         } else {
             Ok(releases.collect())
@@ -425,11 +446,11 @@ struct NikComponentDto {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct JdkVersion {
-    pub major: i32,
-    pub minor: i32,
-    pub security: i32,
-    pub patch: i32,
-    pub build: i32,
+    pub major: u32,
+    pub minor: u32,
+    pub security: u32,
+    pub patch: u32,
+    pub build: u32,
 }
 
 impl JdkVersion {

@@ -1,7 +1,10 @@
-use crate::tool::general_tool;
-use crate::tool::GeneralTool;
-use crate::tool::ToolInfo;
+use any_version_manager::tool::general_tool;
+use any_version_manager::tool::GeneralTool;
+use any_version_manager::tool::ToolInfo;
+use any_version_manager::tool::VersionFilter;
 
+use super::lts_arg;
+use super::major_arg;
 use super::{add_flavor_arg, add_platform_arg, get_flavor, get_platform};
 
 pub const CMD: &str = "get-vers";
@@ -18,21 +21,22 @@ pub fn command(info: &ToolInfo) -> clap::Command {
         info.all_flavors.as_deref(),
         info.default_flavor.as_ref(),
     );
-    subcmd = subcmd.arg(
-        clap::Arg::new("major")
-            .short('m')
-            .long("major")
-            .help("Major version filter"),
-    );
-    subcmd
+    subcmd.arg(major_arg()).arg(lts_arg())
 }
 
-pub async fn run(tool: &dyn GeneralTool, args: &clap::ArgMatches) -> anyhow::Result<()> {
-    let major = args.get_one::<String>("major").map(|m| m.into());
+pub async fn run(tool: &impl GeneralTool, args: &clap::ArgMatches) -> anyhow::Result<()> {
     let platform = get_platform(args).map(|p| p.into());
     let flavor = get_flavor(args).map(|f| f.into());
+    let major = args.get_one::<String>("major").map(|m| m.into());
+    let lts = args.get_flag("lts");
 
-    let vers = general_tool::get_vers(tool, platform, flavor, major).await?;
+    let version_filter = VersionFilter {
+        lts_only: lts,
+        major_version: major,
+        exact_version: None,
+    };
+
+    let vers = general_tool::get_vers(tool, platform, flavor, version_filter).await?;
     for v in vers {
         println!(
             "{}: {}{}",

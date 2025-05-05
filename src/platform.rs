@@ -22,6 +22,7 @@ pub mod cpu {
     pub const ARM32: &str = "arm32";
     pub const ARM64: &str = "arm64";
     pub const ARMV6L: &str = "armv6l";
+    pub const ARMV7L: &str = "armv7l";
     pub const LOONG64: &str = "loong64";
     pub const RISCV32: &str = "riscv32";
     pub const RISCV64: &str = "riscv64";

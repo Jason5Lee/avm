@@ -1,17 +1,53 @@
-use crate::tool::GeneralTool;
-use crate::{HttpClient, UrlMirror};
+pub mod general_tool;
+pub mod rustup;
+
+use any_version_manager::tool::GeneralTool;
+use any_version_manager::{HttpClient, UrlMirror};
+use async_trait::async_trait;
 use directories::ProjectDirs;
+use fxhash::FxHashMap;
 use log::LevelFilter;
 use smol_str::SmolStr;
-use std::collections::HashMap;
 use std::fs::File;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 pub const CONFIG_PATH_ENV: &str = "CONFIG_PATH";
 
+pub struct AvmSubcommand {
+    cmd: clap::Command,
+    run_command: Box<dyn RunSubcommand>,
+}
+
+// Cannot use `Fn` trait due to lifetime issues.
+#[async_trait]
+trait RunSubcommand: Send + Sync {
+    async fn run(
+        &self,
+        paths: Paths,
+        client: Arc<HttpClient>,
+        args: &clap::ArgMatches,
+    ) -> anyhow::Result<()>;
+}
+
+struct RunConfigPathSubcommand;
+
+#[async_trait]
+impl RunSubcommand for RunConfigPathSubcommand {
+    async fn run(
+        &self,
+        paths: Paths,
+        _client: Arc<HttpClient>,
+        _args: &clap::ArgMatches,
+    ) -> anyhow::Result<()> {
+        println!("{}", paths.config_file.display());
+        Ok(())
+    }
+}
+
 pub struct AvmApp {
     cmd: clap::Command,
-    tools: HashMap<SmolStr, Box<dyn GeneralTool + Send + Sync + 'static>>,
+    run_commands: FxHashMap<SmolStr, Box<dyn RunSubcommand>>,
 }
 
 pub struct LoadedConfig {
@@ -19,17 +55,23 @@ pub struct LoadedConfig {
     pub paths: Paths,
 }
 
+#[allow(dead_code)] // some fields may be useful in the future.
 pub struct Paths {
     pub config_file: PathBuf,
     pub data_dir: PathBuf,
     pub tool_dir: PathBuf,
+    pub rustup_path: Option<PathBuf>,
 }
 
 impl AvmApp {
     pub const CONFIG_PATH_CMD: &str = "config-path";
-    pub const DEFAULT_TAG: &str = "default";
 
     pub fn new() -> Self {
+        let mut run_commands: FxHashMap<SmolStr, Box<dyn RunSubcommand>> = FxHashMap::default();
+        run_commands.insert(
+            Self::CONFIG_PATH_CMD.into(),
+            Box::new(RunConfigPathSubcommand),
+        );
         Self {
             cmd: clap::Command::new("avm")
                 .about("(Potentially) Any language Version Manager, a Command-Line Interface tool designed to manage multiple versions of development tools for potentially any programming language, maximizing code reuse.")
@@ -39,37 +81,37 @@ impl AvmApp {
                 .arg(clap::Arg::new("debug").long("debug").action(clap::ArgAction::SetTrue))
                 .subcommand(clap::Command::new(Self::CONFIG_PATH_CMD)
                     .about("Get the path of the config file")),
-            tools: HashMap::new(),
+            run_commands,
         }
     }
 
-    pub fn add_tool<T: GeneralTool + Send + Sync + 'static>(self, tool: T) -> Self {
-        let Self { mut cmd, mut tools } = self;
-        let info = tool.info();
-        cmd = cmd.subcommand(tool::command(info));
-        tools.insert(info.name.clone(), Box::new(tool));
-        Self { cmd, tools }
+    pub fn add_subcommand(self, subcmd: AvmSubcommand) -> Self {
+        let Self {
+            mut cmd,
+            mut run_commands,
+        } = self;
+        let name = subcmd.cmd.get_name().into();
+        cmd = cmd.subcommand(subcmd.cmd);
+        run_commands.insert(name, subcmd.run_command);
+        Self { cmd, run_commands }
     }
 
-    pub async fn run(self, paths: Paths, client: &HttpClient) -> anyhow::Result<()> {
+    pub fn add_tool<T: GeneralTool + 'static>(self, tool: T) -> Self {
+        self.add_subcommand(general_tool::new_avm_subcommand(tool))
+    }
+
+    pub async fn run(self, paths: Paths, client: Arc<HttpClient>) -> anyhow::Result<()> {
         let matches = self.cmd.get_matches();
         if !matches.get_flag("debug") {
             log::set_max_level(LevelFilter::Info);
         }
 
-        if let Some((subcmd, args)) = matches.subcommand() {
-            if subcmd == Self::CONFIG_PATH_CMD {
-                println!("{}", paths.config_file.display());
-            } else {
-                let tool = self
-                    .tools
-                    .get(subcmd)
-                    .ok_or_else(|| anyhow::anyhow!("Unknown tool {}", subcmd))?;
-                tool::run(tool.as_ref(), client, &paths, args).await?;
-            }
-        }
-
-        Ok(())
+        let (subcmd, args) = matches.subcommand().expect("Subcommand is required");
+        self.run_commands
+            .get(subcmd)
+            .expect("Subcommand should be present")
+            .run(paths, client, args)
+            .await
     }
 }
 
@@ -88,11 +130,11 @@ pub fn load_config() -> anyhow::Result<LoadedConfig> {
         None => dirs.config_dir().join("config.yaml"),
     };
 
-    let config: crate::Config = match File::open(&config_path) {
+    let config: any_version_manager::Config = match File::open(&config_path) {
         Ok(file) => serde_yaml_ng::from_reader(file)?,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             // Use default config when file is not found
-            crate::Config::default()
+            any_version_manager::Config::default()
         }
         Err(e) => return Err(e.into()),
     };
@@ -108,8 +150,7 @@ pub fn load_config() -> anyhow::Result<LoadedConfig> {
             config_file: config_path,
             data_dir: data_path,
             tool_dir: tool_path,
+            rustup_path: config.rustup.and_then(|c| c.path),
         },
     })
 }
-
-pub mod tool;

@@ -1,7 +1,9 @@
+mod avm_cli;
+
+use any_version_manager::tool::general_tool::{go, liberica, node};
+use any_version_manager::HttpClient;
 use anyhow::Context;
-use avm::cli::{load_config, LoadedConfig};
-use avm::tool::general_tool::go;
-use avm::{cli::AvmApp, tool::general_tool::liberica, HttpClient};
+use avm_cli::{load_config, rustup, AvmApp, LoadedConfig};
 use log::LevelFilter;
 use std::sync::Arc;
 
@@ -15,7 +17,7 @@ fn main() {
     let r = (|| -> anyhow::Result<()> {
         let LoadedConfig { mirror, paths } = load_config()?;
         ctrlc::set_handler(move || {
-            avm::set_cancelled();
+            any_version_manager::set_cancelled();
         })
         .context("Error setting Ctrl-C handler")?;
 
@@ -26,16 +28,18 @@ fn main() {
 
         let http_client = Arc::new(HttpClient::new(mirror));
         runtime
-            .block_on(avm::CancellableFuture::new(
+            .block_on(any_version_manager::CancellableFuture::new(
                 AvmApp::new()
                     .add_tool(liberica::Tool::new(http_client.clone()))
                     .add_tool(go::Tool::new(http_client.clone()))
-                    .run(paths, &http_client),
+                    .add_tool(node::Tool::new(http_client.clone()))
+                    .add_subcommand(rustup::new_subcommand())
+                    .run(paths, http_client),
             ))
             .unwrap_or(Ok(()))
     })();
 
     if let Err(e) = r {
-        log::error!("{e}");
+        log::error!("{e:?}");
     }
 }

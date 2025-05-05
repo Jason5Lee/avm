@@ -11,6 +11,7 @@ pub mod blocking;
 pub enum ArchiveType {
     Zip,
     TarGz,
+    TarXz,
 }
 
 impl ArchiveType {
@@ -19,6 +20,8 @@ impl ArchiveType {
             Ok(ArchiveType::Zip)
         } else if path.ends_with(b".tar.gz") {
             Ok(ArchiveType::TarGz)
+        } else if path.ends_with(b".tar.xz") {
+            Ok(ArchiveType::TarXz)
         } else {
             Err(anyhow::anyhow!(
                 "unknown archive type from {}",
@@ -78,7 +81,7 @@ impl DownloadExtractState {
         let response = client.get(url).send().await?;
         if !response.status().is_success() {
             anyhow::bail!(
-                "failed to download '{}': {}\n{}",
+                "Failed to download '{}': {}\n{}",
                 url,
                 response.status(),
                 response.text().await?
@@ -204,7 +207,7 @@ impl DownloadExtractState {
                 abandoned_tmp_dir.as_mut().unwrap().should_not_block = false;
                 Ok(DownloadExtractState(DownloadExtractStateInner::Stopped))
             }
-            DownloadExtractStateInner::Stopped => Err(anyhow::anyhow!("already stopped")),
+            DownloadExtractStateInner::Stopped => Err(anyhow::anyhow!("Already stopped")),
         }
     }
 
