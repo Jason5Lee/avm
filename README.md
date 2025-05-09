@@ -2,7 +2,7 @@
 
 (Potentially) Any language Version Manager, a Command-Line Interface tool designed to manage multiple versions of development tools for potentially any programming language, maximizing code reuse.
 
-## Key features
+## Key designs
 
 * **Version Management:** Easily install, manage, and switch between different versions of various development tools.
 * **Flexible Installation:**
@@ -12,7 +12,7 @@
   * Each tool version/architecture is identified by a unique `tag`.
   * Create `aliases` for tags, providing fixed paths that can point to different underlying tool versions. This is useful for configuring your environment.
   * `copy` a tag to duplicate its contents, ideal for tools that modify themselves during execution.
-* **Manual Environment Setup:** `avm` does not automatically modify your system's environment variables. Use the `path` subcommand to retrieve the installation path for a specific tag or alias and manually configure your environment.
+* **Manual Environment Setup:** `avm` does not automatically modify your system's environment variables. Use the `path` subcommand to retrieve the installation path for a specific tag or alias and manually configure your environment. Aliases provide stable paths that can point to different underlying tags.
 
 ## Roadmap
 
@@ -20,6 +20,8 @@
 * [x] Go
 * [x] Node.js
 * [ ] Python
+* [ ] .NET
+  * .NET CLI has its own SDKs manager. Need to decide how to integrate it.
 * [ ] Rustup
   * [x] Rustup delegate
   * [ ] Install rustup if not found
