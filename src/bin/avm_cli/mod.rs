@@ -75,7 +75,7 @@ impl AvmApp {
         Self {
             cmd: clap::Command::new("avm")
                 .about("(Potentially) Any language Version Manager, a Command-Line Interface tool designed to manage multiple versions of development tools for potentially any programming language, maximizing code reuse.")
-                .version("0.1.0")
+                .version("0.0.2")
                 .subcommand_required(true)
                 .arg_required_else_help(true)
                 .arg(clap::Arg::new("debug").long("debug").action(clap::ArgAction::SetTrue))
