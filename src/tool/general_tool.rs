@@ -455,7 +455,7 @@ pub async fn clean(tool: &impl GeneralTool, tools_base: &Path) -> anyhow::Result
                         if std::fs::metadata(&entry_path).is_err() {
                             log::debug!("Removing dangling alias '{}'", entry_path.display());
                             // Use remove_file to remove dangling symlinks
-                            if let Err(err) = std::fs::remove_file(&entry_path) {
+                            if let Err(err) = blocking::remove_link(&entry_path) {
                                 log::warn!(
                                     "Failed to remove dangling alias {}: {}",
                                     entry_path.display(),

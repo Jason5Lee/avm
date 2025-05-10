@@ -4,7 +4,7 @@ authors = ["Jason5Lee <jason5lee@hotmail.com>"]
 description = "(Potentially) Any language Version Manager, a Command-Line Interface tool designed to manage multiple versions of development tools for potentially any programming language, maximizing code reuse."
 license = "MIT"
 readme = "README.md"
-version = "0.0.2"
+version = "0.0.3"
 edition = "2021"
 repository = "https://github.com/Jason5Lee/avm"
 

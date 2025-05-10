@@ -76,7 +76,7 @@ pub fn get_link_target(path: &Path) -> GetLinkResult<PathBuf> {
 }
 
 pub fn check_is_link(path: &Path) -> GetLinkResult<()> {
-    match std::fs::metadata(path) {
+    match std::fs::symlink_metadata(path) {
         Ok(metadata) => {
             if metadata.is_symlink() {
                 GetLinkResult::Link(())
@@ -94,6 +94,14 @@ pub fn check_is_link(path: &Path) -> GetLinkResult<()> {
     }
 }
 
+pub fn remove_link(path: &Path) -> anyhow::Result<()> {
+    #[cfg(not(windows))]
+    std::fs::remove_file(path)?;
+    #[cfg(windows)]
+    std::fs::remove_dir(path)?;
+    Ok(())
+}
+
 pub fn set_alias_tag(
     src_tag: &str,
     src_path: &Path,
@@ -106,11 +114,11 @@ pub fn set_alias_tag(
 
     match check_is_link(alias_path) {
         GetLinkResult::Link(_) => {
-            std::fs::remove_dir(alias_path)?;
+            remove_link(alias_path)?;
         }
         GetLinkResult::NotFound => {}
         GetLinkResult::NotLink => {
-            anyhow::bail!("Alias tag \"{alias_tag}\" exists and is not an alias");
+            anyhow::bail!("Tag \"{alias_tag}\" exists and is not an alias");
         }
         GetLinkResult::Err(err) => {
             return Err(err)

@@ -9,7 +9,6 @@ use std::sync::Arc;
 
 fn main() {
     stderrlog::new()
-        .module(module_path!())
         .verbosity(LevelFilter::Trace)
         .init()
         .expect("Failed to initialize logger");
