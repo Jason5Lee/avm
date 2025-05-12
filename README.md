@@ -22,6 +22,8 @@
 * [ ] Python
 * [ ] .NET
   * .NET CLI has its own SDKs manager. Need to decide how to integrate it.
+* [ ] pnpm
+  * Manage multiple pnpm versions is needed based on real-world usage scenarios.
 * [ ] Rustup
   * [x] Rustup delegate
   * [ ] Install rustup if not found
