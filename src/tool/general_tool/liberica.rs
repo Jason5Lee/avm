@@ -180,16 +180,20 @@ impl crate::tool::GeneralTool for Tool {
 }
 
 impl Tool {
-    pub fn new(client: Arc<HttpClient>) -> Self {
+    pub fn new(client: Arc<HttpClient>, config_default_platform: Option<SmolStr>) -> Self {
         let (all_platforms, corresponding_dto_os_arch_bitness) =
             Self::get_platforms_and_corresponding_dto_os_arch_bitness();
         let all_flavors = FLAVOR.iter().map(SmolStr::new).collect::<Vec<_>>();
 
-        let default_platform = current_cpu().and_then(|cpu| {
-            let os = current_os()?;
-            let p = create_platform_string(cpu, os);
-            all_platforms.iter().find(|&k| p == *k).cloned()
-        });
+        let default_platform = config_default_platform
+            .and_then(|p| all_platforms.iter().find(|&k| p == *k).cloned())
+            .or_else(|| {
+                current_cpu().and_then(|cpu| {
+                    let os = current_os()?;
+                    let p = create_platform_string(cpu, os);
+                    all_platforms.iter().find(|&k| p == *k).cloned()
+                })
+            });
 
         Tool {
             client,

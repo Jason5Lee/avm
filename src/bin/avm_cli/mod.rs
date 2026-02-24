@@ -2,7 +2,7 @@ pub mod dirln;
 pub mod general_tool;
 pub mod global;
 
-use any_version_manager::{HttpClient, UrlMirror};
+use any_version_manager::{DefaultPlatform, HttpClient, UrlMirror};
 use clap::{Parser, Subcommand};
 use directories::ProjectDirs;
 use log::LevelFilter;
@@ -85,6 +85,7 @@ pub enum Command {
 pub struct LoadedConfig {
     pub mirrors: UrlMirror,
     pub paths: Paths,
+    pub default_platform: DefaultPlatform,
 }
 
 #[allow(dead_code)]
@@ -94,13 +95,17 @@ pub struct Paths {
     pub tool_dir: PathBuf,
 }
 
-pub async fn run(paths: Paths, client: Arc<HttpClient>) -> anyhow::Result<()> {
+pub async fn run(
+    paths: Paths,
+    client: Arc<HttpClient>,
+    default_platform: DefaultPlatform,
+) -> anyhow::Result<()> {
     let cli = Cli::parse();
     if !cli.debug {
         log::set_max_level(LevelFilter::Info);
     }
 
-    let tools = general_tool::ToolSet::new(client.clone());
+    let tools = general_tool::ToolSet::new(client.clone(), &default_platform);
 
     match cli.command {
         Command::ConfigPath => {
@@ -157,5 +162,6 @@ pub fn load_config() -> anyhow::Result<LoadedConfig> {
             data_dir: data_path,
             tool_dir: tool_path,
         },
+        default_platform: config.default_platform.unwrap_or_default(),
     })
 }

@@ -8,6 +8,7 @@ use any_version_manager::tool::general_tool::{
     self, go as go_tool, liberica as liberica_tool, node as node_tool,
 };
 use any_version_manager::tool::{GeneralTool, ToolInfo, Version, VersionFilter, VersionPrefix};
+use any_version_manager::DefaultPlatform;
 use clap::{Args, ValueEnum};
 use indicatif::{ProgressBar, ProgressStyle};
 use smol_str::SmolStr;
@@ -67,11 +68,18 @@ async fn async_invoke_tool<FT: AsyncFnTool>(
 }
 
 impl ToolSet {
-    pub fn new(client: Arc<HttpClient>) -> Self {
+    pub fn new(client: Arc<HttpClient>, default_platform: &DefaultPlatform) -> Self {
+        let resolve = |tool_name: &str| -> Option<SmolStr> {
+            default_platform
+                .tools
+                .get(tool_name)
+                .or(default_platform.global.as_ref())
+                .map(SmolStr::new)
+        };
         Self {
-            liberica: liberica_tool::Tool::new(client.clone()),
-            go: go_tool::Tool::new(client.clone()),
-            node: node_tool::Tool::new(client),
+            liberica: liberica_tool::Tool::new(client.clone(), resolve("liberica")),
+            go: go_tool::Tool::new(client.clone(), resolve("go")),
+            node: node_tool::Tool::new(client, resolve("node")),
         }
     }
 

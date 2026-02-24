@@ -1,3 +1,4 @@
+use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::fmt;
@@ -22,10 +23,19 @@ pub struct UrlMirror {
 }
 
 #[derive(Debug, Default, Deserialize)]
+pub struct DefaultPlatform {
+    pub global: Option<String>,
+    #[serde(flatten)]
+    pub tools: FxHashMap<String, String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
 pub struct Config {
     #[serde(flatten)]
     pub mirrors: Option<UrlMirror>,
     pub data_path: Option<PathBuf>,
+    #[serde(rename = "default-platform")]
+    pub default_platform: Option<DefaultPlatform>,
 }
 
 pub async fn spawn_blocking<T: Send + 'static>(

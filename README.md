@@ -77,6 +77,17 @@ data_path = "/path/to/data"
 [[mirrors]]
 from = "https://origin.example.com/tool"
 to = "https://mirror.example.com/tool"
+
+# Optional: Override the default platform for tools that support platform selection
+# (currently: go, node, liberica).
+# By default, AVM detects the platform from the current OS and CPU.
+# The value must be a valid platform string for the tool (see `avm tool <tool>` for available platforms).
+# If the value does not match any supported platform of the tool, it is ignored
+# and detection falls back to the current OS and CPU.
+# Resolution order: tool-specific entry -> global -> current OS and CPU.
+[default-platform]
+global = "x64-linux"    # applies to all tools that support platform selection
+go = "arm64-macos"      # tool-specific override (takes precedence over global)
 ```
 
 ## Roadmap

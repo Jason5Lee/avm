@@ -17,6 +17,7 @@ fn main() {
         let LoadedConfig {
             mirrors: mirror,
             paths,
+            default_platform,
         } = load_config()?;
         ctrlc::set_handler(move || {
             any_version_manager::set_cancelled();
@@ -33,6 +34,7 @@ fn main() {
             .block_on(any_version_manager::CancellableFuture::new(run(
                 paths,
                 http_client,
+                default_platform,
             )))
             .unwrap_or(Ok(()))
     })();
