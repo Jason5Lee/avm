@@ -44,14 +44,41 @@ pub fn create_platform_string(cpu: &str, os: &str) -> SmolStr {
 
 #[allow(unreachable_code)]
 pub fn current_os() -> Option<&'static str> {
-    #[cfg(target_os = "windows")]
+    #[cfg(all(target_os = "windows", target_env = "gnu"))]
+    return Some(os::WIN_GNU);
+
+    #[cfg(all(target_os = "windows", not(target_env = "gnu")))]
     return Some(os::WIN);
 
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", target_env = "musl"))]
+    return Some(os::LINUX_MUSL);
+
+    #[cfg(all(target_os = "linux", not(target_env = "musl")))]
     return Some(os::LINUX);
 
     #[cfg(target_os = "macos")]
     return Some(os::MAC);
+
+    #[cfg(target_os = "solaris")]
+    return Some(os::SOLARIS);
+
+    #[cfg(target_os = "aix")]
+    return Some(os::AIX);
+
+    #[cfg(target_os = "freebsd")]
+    return Some(os::FREEBSD);
+
+    #[cfg(target_os = "netbsd")]
+    return Some(os::NETBSD);
+
+    #[cfg(target_os = "openbsd")]
+    return Some(os::OPENBSD);
+
+    #[cfg(target_os = "dragonfly")]
+    return Some(os::DRAGONFLYBSD);
+
+    #[cfg(target_os = "illumos")]
+    return Some(os::ILLUMOS);
 
     None
 }
@@ -64,11 +91,23 @@ pub fn current_cpu() -> Option<&'static str> {
     #[cfg(target_arch = "x86_64")]
     return Some(cpu::X64);
 
-    #[cfg(target_arch = "arm")]
+    #[cfg(all(target_arch = "arm", target_feature = "v7"))]
+    return Some(cpu::ARMV7L);
+
+    #[cfg(all(target_arch = "arm", target_feature = "v6"))]
+    return Some(cpu::ARMV6L);
+
+    #[cfg(all(
+        target_arch = "arm",
+        not(any(target_feature = "v6", target_feature = "v7"))
+    ))]
     return Some(cpu::ARM32);
 
     #[cfg(target_arch = "aarch64")]
     return Some(cpu::ARM64);
+
+    #[cfg(target_arch = "loongarch64")]
+    return Some(cpu::LOONG64);
 
     #[cfg(target_arch = "riscv32")]
     return Some(cpu::RISCV32);
@@ -76,11 +115,20 @@ pub fn current_cpu() -> Option<&'static str> {
     #[cfg(target_arch = "riscv64")]
     return Some(cpu::RISCV64);
 
-    // #[cfg(target_arch = "ppc32")]
-    // return Some(cpu::PPC32);
+    #[cfg(target_arch = "powerpc")]
+    return Some(cpu::PPC32);
 
-    // #[cfg(target_arch = "ppc64")]
-    // return Some(cpu::PPC64);
+    #[cfg(target_arch = "powerpc64")]
+    return Some(cpu::PPC64);
+
+    #[cfg(target_arch = "mips")]
+    return Some(cpu::MIPS32);
+
+    #[cfg(target_arch = "mips64")]
+    return Some(cpu::MIPS64);
+
+    #[cfg(target_arch = "s390x")]
+    return Some(cpu::S390X);
 
     #[cfg(target_arch = "sparc")]
     return Some(cpu::SPARC32);
