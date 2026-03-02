@@ -1,6 +1,6 @@
 # avm
 
-`avm` is a CLI for managing multiple versions of development tools with a shared workflow.
+`avm` is a CLI for managing multiple versions of multiple development tools with a shared workflow.
 
 ## Supported Tools
 
@@ -28,29 +28,12 @@ avm get-vers go --platform x64-linux
 avm install liberica --platform x64-linux --flavor jdk
 ```
 
-Current top-level commands:
-
-- `config-path`
-- `tool`
-- `install`
-- `get-vers`
-- `get-downinfo`
-- `install-local`
-- `list`
-- `path`
-- `exe-path`
-- `run`
-- `alias`
-- `copy`
-- `remove`
-- `clean`
-- `dirln`
-
 ## Usage Notes
 
-- `avm` does not modify shell environment variables automatically.
+- `avm` does not modify shell environment variables.
 - Use `avm path <tool> [tag]` or `avm exe-path <tool> [tag]` and wire paths in your shell config.
 - Tags and aliases are filesystem-based and can be managed with `alias`, `copy`, `remove`, and `clean`.
+  - This means an alias tag can point to arbitary versions while having the same path.
 - For offline installation:
   1. Run `avm get-downinfo <tool> ...` to obtain URL/hash metadata.
   2. Download the archive.

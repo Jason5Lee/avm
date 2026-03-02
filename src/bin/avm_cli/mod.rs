@@ -15,7 +15,7 @@ pub const CONFIG_PATH_ENV: &str = "CONFIG_PATH";
 #[command(
     name = "avm",
     version,
-    about = "A Command-Line Interface tool designed to manage multiple versions of development tools for multiple programming languages with shared workflows.",
+    about = "A CLI tool designed to manage multiple versions of multiple development tools for multiple programming languages with shared workflows.",
     after_long_help = "Use `avm tool` to list supported tools and `avm tool <tool>` to see platform/flavor options and install examples.",
     subcommand_required = true,
     arg_required_else_help = true

@@ -1,7 +1,7 @@
 [package]
 name = "any-version-manager"
 authors = ["Jason5Lee <jason5lee@hotmail.com>"]
-description = "A Command-Line Interface tool designed to manage multiple versions of development tools for multiple programming languages with shared workflows."
+description = "A CLI tool designed to manage multiple versions of multiple development tools for multiple programming languages with shared workflows."
 license = "MIT"
 readme = "README.md"
 version = "0.0.4"
