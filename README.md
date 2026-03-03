@@ -33,11 +33,52 @@ avm install liberica --platform x64-linux --flavor jdk
 - `avm` does not modify shell environment variables.
 - Use `avm path <tool> [tag]` or `avm exe-path <tool> [tag]` and wire paths in your shell config.
 - Tags and aliases are filesystem-based and can be managed with `alias`, `copy`, `remove`, and `clean`.
-  - This means an alias tag can point to arbitary versions while having the same path.
-- For offline installation:
+  - This means an alias tag can point to arbitary versions while having the same path
   1. Run `avm get-downinfo <tool> ...` to obtain URL/hash metadata.
   2. Download the archive.
   3. Run `avm install-local <tool> <archive> <target_tag> [--hash ...]`.
+
+## Example: Multiple Versions, Alias, and Paths
+
+This example uses `node`; the workflow is identical for other tools.
+
+Install two versions:
+
+```bash
+avm install node -x 22 # Install NodeJS 22.x.x
+avm install node -x 24 # Install NodeJS 24.x.x
+```
+
+Create an alias that points to a specific installed version:
+
+```bash
+avm alias node arm64-mac_24.14.0 default
+```
+
+Show the alias path and the concrete version path:
+
+```bash
+avm path node default
+avm path node arm64-mac_24.14.0
+```
+
+Point the same alias at a different installed version:
+
+```bash
+avm alias node arm64-mac_22.22.0 default
+```
+
+The alias path stays the same but now points to the other version:
+
+```bash
+avm path node default
+avm path node arm64-mac_22.22.0
+```
+
+If you wire your shell to use the alias path (for example `$(avm path node default)`),
+updating the alias switches the tool version without changing the path.
+
+The `default` tag is treated specially. It is the default tag to run with `avm run` if no flags are provided and can be set automatically during installation with the `--default` option.
 
 ## Configuration
 
@@ -52,7 +93,7 @@ You can also override config path via environment variable `CONFIG_PATH`.
 Config format (`toml`):
 
 ```toml
-# Optional: Storage directory for AVM data.
+# Optional: Storage directory for AVM data, including installed tools.
 # Default: OS-specific local data directory.
 data_path = "/path/to/data"
 

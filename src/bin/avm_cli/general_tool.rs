@@ -123,21 +123,61 @@ impl FnTool for DescribeFlavorFn<'_> {
 }
 
 #[derive(Debug, Clone, Args)]
+pub struct SelectorArgs {
+    #[arg(
+        short = 'v',
+        long = "version",
+        help = "Exact version string, for example 22.13.1."
+    )]
+    pub version: Option<String>,
+    #[arg(
+        short = 'x',
+        long = "verpfx",
+        help = "Version prefix in strict x, x.y, or x.y.z format."
+    )]
+    pub version_prefix: Option<String>,
+    #[arg(short = 'p', long, help = "Target platform identifier.")]
+    pub platform: Option<String>,
+    #[arg(short = 'f', long, help = "Tool-specific flavor identifier.")]
+    pub flavor: Option<String>,
+    #[arg(long = "lts-only", help = "Only allow LTS releases.")]
+    pub lts_only: bool,
+    #[arg(long = "allow-prere", help = "Allow prerelease versions (beta/rc).")]
+    pub allow_prerelease: bool,
+}
+
+impl SelectorArgs {
+    fn is_empty(&self) -> bool {
+        self.version.is_none()
+            && self.version_prefix.is_none()
+            && self.platform.is_none()
+            && self.flavor.is_none()
+            && !self.lts_only
+            && !self.allow_prerelease
+    }
+
+    fn to_version_filter(&self) -> anyhow::Result<VersionFilter> {
+        to_version_filter(
+            self.version.as_deref(),
+            self.version_prefix.as_deref(),
+            self.lts_only,
+            self.allow_prerelease,
+        )
+    }
+}
+
+#[derive(Debug, Clone, Args)]
 pub struct InstallArgs {
     #[arg(
         value_enum,
         help = "Tool name. Use `avm tool <tool>` to inspect supported platform/flavor values."
     )]
     pub tool: ToolName,
-    #[arg(
-        short = 's',
-        long,
-        help = "Selector string. Run `avm help-selector` for full selector format and examples."
-    )]
-    pub selector: Option<String>,
+    #[clap(flatten)]
+    pub selector: SelectorArgs,
     #[arg(long, help = "Set installed version as the `default` alias.")]
     pub default: bool,
-    #[arg(long, help = "Replace existing tag if already installed.")]
+    #[arg(short = 'u', long, help = "Replace existing tag if already installed.")]
     pub update: bool,
 }
 
@@ -145,24 +185,16 @@ pub struct InstallArgs {
 pub struct GetVersArgs {
     #[arg(value_enum, help = "Tool name.")]
     pub tool: ToolName,
-    #[arg(
-        short = 's',
-        long,
-        help = "Selector string. Run `avm help-selector` for full selector format and examples."
-    )]
-    pub selector: Option<String>,
+    #[clap(flatten)]
+    pub selector: SelectorArgs,
 }
 
 #[derive(Debug, Clone, Args)]
 pub struct GetDowninfoArgs {
     #[arg(value_enum, help = "Tool name.")]
     pub tool: ToolName,
-    #[arg(
-        short = 's',
-        long,
-        help = "Selector string. Run `avm help-selector` for full selector format and examples."
-    )]
-    pub selector: Option<String>,
+    #[clap(flatten)]
+    pub selector: SelectorArgs,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -224,15 +256,11 @@ pub struct RunArgs {
     #[arg(
         short = 't',
         long = "tag",
-        help = "Tag to run. If set together with `--selector`, selector will be ignored."
+        help = "Tag to run. If set together with selector flags, selector filters are ignored."
     )]
     pub tag: Option<String>,
-    #[arg(
-        short = 's',
-        long,
-        help = "Selector string. Run `avm help-selector` for full selector format and examples."
-    )]
-    pub selector: Option<String>,
+    #[clap(flatten)]
+    pub selector: SelectorArgs,
     #[arg(
         help = "Arguments passed to the tool executable. Use `--` before these arguments.",
         last = true,
@@ -280,51 +308,6 @@ pub struct CleanArgs {
     pub tool: ToolName,
 }
 
-#[derive(Debug, Clone, Default)]
-struct Selector {
-    version: Option<String>,
-    version_prefix: Option<String>,
-    platform: Option<String>,
-    flavor: Option<String>,
-    lts_only: bool,
-    allow_prerelease: bool,
-}
-
-impl Selector {
-    fn parse(raw: &str) -> anyhow::Result<Self> {
-        let mut selector = Self::default();
-        for item in raw.split(',').map(str::trim).filter(|s| !s.is_empty()) {
-            let lower = item.to_ascii_lowercase();
-            if lower == "lts-only" {
-                selector.lts_only = true;
-                continue;
-            }
-            if lower == "allow-prere" {
-                selector.allow_prerelease = true;
-                continue;
-            }
-
-            let (key, value) = item
-                .split_once(':')
-                .ok_or_else(|| anyhow::anyhow!("Invalid selector part '{item}'"))?;
-            let key = key.trim().to_ascii_lowercase();
-            let value = value.trim();
-            if value.is_empty() {
-                anyhow::bail!("Selector value for '{key}' is empty");
-            }
-
-            match key.as_str() {
-                "ver" => selector.version = Some(value.to_owned()),
-                "verpfx" => selector.version_prefix = Some(value.to_owned()),
-                "platform" => selector.platform = Some(value.to_owned()),
-                "flavor" => selector.flavor = Some(value.to_owned()),
-                _ => anyhow::bail!("Unknown selector key '{key}'"),
-            }
-        }
-        Ok(selector)
-    }
-}
-
 struct RunInstallFn<'a> {
     tool_name: &'a str,
     client: &'a HttpClient,
@@ -341,15 +324,10 @@ impl AsyncFnTool for RunInstallFn<'_> {
         let tools_base = self.tools_base;
         let args = self.args;
 
-        let selector = parse_selector_or_default(args.selector.as_deref())?;
+        let selector = &args.selector;
         let (platform, flavor) =
             resolve_platform_flavor(tool, &selector.platform, &selector.flavor);
-        let install_version = to_version_filter(
-            selector.version.as_deref(),
-            selector.version_prefix.as_deref(),
-            selector.lts_only,
-            selector.allow_prerelease,
-        )?;
+        let install_version = selector.to_version_filter()?;
 
         let (target_tag, download_url, download_state) = general_tool::InstallArgs {
             tool_name,
@@ -380,15 +358,10 @@ impl AsyncFnTool for RunGetVersFn<'_> {
 
     async fn invoke(&self, tool: &impl GeneralTool) -> Self::Output {
         let args = self.args;
-        let selector = parse_selector_or_default(args.selector.as_deref())?;
+        let selector = &args.selector;
         let (platform, flavor) =
             resolve_platform_flavor(tool, &selector.platform, &selector.flavor);
-        let version_filter = to_version_filter(
-            selector.version.as_deref(),
-            selector.version_prefix.as_deref(),
-            selector.lts_only,
-            selector.allow_prerelease,
-        )?;
+        let version_filter = selector.to_version_filter()?;
 
         let vers = general_tool::get_vers(tool, platform, flavor, version_filter).await?;
         for v in vers {
@@ -408,15 +381,10 @@ impl AsyncFnTool for RunGetDowninfoFn<'_> {
 
     async fn invoke(&self, tool: &impl GeneralTool) -> Self::Output {
         let args = self.args;
-        let selector = parse_selector_or_default(args.selector.as_deref())?;
+        let selector = &args.selector;
         let (platform, flavor) =
             resolve_platform_flavor(tool, &selector.platform, &selector.flavor);
-        let install_version = to_version_filter(
-            selector.version.as_deref(),
-            selector.version_prefix.as_deref(),
-            selector.lts_only,
-            selector.allow_prerelease,
-        )?;
+        let install_version = selector.to_version_filter()?;
 
         let downinfo = general_tool::get_downinfo(tool, platform, flavor, install_version).await?;
         println!("{}", toml::to_string(&downinfo)?);
@@ -458,20 +426,15 @@ impl AsyncFnTool for RunRunFn<'_> {
         let args = self.args;
 
         let tag = if let Some(tag) = args.tag.as_ref() {
-            if args.selector.is_some() {
-                log::warn!("`--selector` is ignored because `--tag` is provided.");
+            if !args.selector.is_empty() {
+                log::warn!("Selector flags are ignored because `--tag` is provided.");
             }
             SmolStr::from(tag.as_str())
-        } else if let Some(selector_raw) = args.selector.as_deref() {
-            let selector = Selector::parse(selector_raw)?;
+        } else if !args.selector.is_empty() {
+            let selector = &args.selector;
             let (platform, flavor) =
                 resolve_platform_flavor(tool, &selector.platform, &selector.flavor);
-            let version_filter = to_version_filter(
-                selector.version.as_deref(),
-                selector.version_prefix.as_deref(),
-                selector.lts_only,
-                selector.allow_prerelease,
-            )?;
+            let version_filter = selector.to_version_filter()?;
 
             if let Some(local_tag) = general_tool::find_matching_local_tag(
                 tool_name,
@@ -644,43 +607,6 @@ pub async fn run_clean(args: CleanArgs, paths: &Paths) -> anyhow::Result<()> {
     general_tool::clean(&tool_name, &paths.tool_dir).await
 }
 
-pub fn run_help_selector() -> anyhow::Result<()> {
-    println!(
-        r#"Selector quick reference
-
-Use selector via `-s/--selector` in:
-- `avm install <tool> --selector "..."`
-- `avm get-vers <tool> --selector "..."`
-- `avm get-downinfo <tool> --selector "..."`
-- `avm run <tool> --selector "..."`
-
-Selector format (comma-separated):
-- `ver: <version>`: exact tool-specific version string, for example `22.13.1`.
-- `verpfx: <version prefix>`: numeric version prefix constraint in strict `x`, `x.y`, or `x.y.z` format.
-- `platform: <platform>`: target platform identifier.
-- `flavor: <flavor>`: tool-specific flavor identifier.
-- `lts-only`: only allow LTS releases.
-- `allow-prere`: allow prerelease versions (for example Go beta/rc).
-
-Examples:
-- `ver: 22.13.1, platform: x64-linux`
-- `verpfx: 22, lts-only`
-- `platform: arm64-macos, flavor: jdk, lts-only`
-
-Notes:
-- If selector is omitted, it is equivalent to an empty selector:
-  no fields are explicitly set, platform/flavor use default resolution,
-  and version is not restricted.
-  The run command is an exception: if no selector or tag is specified, it executes the default tag.
-- Selector resolution picks the latest version that satisfies all selector constraints.
-- In most cases, `ver` and `verpfx` align naturally. One notable exception is JDK 8 style versions, for example `ver: 8u482+10`; use `verpfx: 8` for that series.
-- For most common local usage, platform default is enough; you usually do not need to set `platform`.
-- Check valid `platform`/`flavor` values with `avm tool <tool>`.
-"#
-    );
-    Ok(())
-}
-
 pub fn to_version_filter(
     version: Option<&str>,
     version_prefix: Option<&str>,
@@ -693,13 +619,6 @@ pub fn to_version_filter(
         lts_only: lts,
         allow_prerelease,
     })
-}
-
-fn parse_selector_or_default(raw: Option<&str>) -> anyhow::Result<Selector> {
-    match raw {
-        Some(raw) => Selector::parse(raw),
-        None => Ok(Selector::default()),
-    }
 }
 
 async fn drive_download_state(

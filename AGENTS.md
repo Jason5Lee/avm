@@ -81,4 +81,4 @@ Guidance:
 - `src/io/blocking` contains blocking I/O helpers; when calling them from async code, wrap the blocking work in `spawn_blocking`.
 - Before committing, run formatting and checks available in the current environment:
   - `cargo fmt`
-  - `cargo check --locked` (or `--offline` when network is unavailable)
+  - `cargo clippy`

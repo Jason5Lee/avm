@@ -45,9 +45,6 @@ pub enum Command {
     #[command(about = "Get download info")]
     GetDowninfo(general_tool::GetDowninfoArgs),
 
-    #[command(about = "Show detailed selector format and usage")]
-    HelpSelector,
-
     #[command(about = "Install a specific tool from a local archive")]
     InstallLocal(general_tool::InstallLocalArgs),
 
@@ -76,7 +73,7 @@ pub enum Command {
     Clean(general_tool::CleanArgs),
 
     #[command(
-        about = "Create a directory symbolic link (ln -s for Unix, mklink /J for Windows)",
+        about = "Create a directory symbolic link (equivalent ln -s for Unix, mklink /J for Windows)",
         long_about = "Creates a directory symbolic link. This is equivalent to 'ln -s' on Unix systems and 'mklink /J' on Windows. This command is a utility and not directly tied to core avm flows."
     )]
     Dirln(dirln::DirlnArgs),
@@ -119,7 +116,6 @@ pub async fn run(
         Command::Install(args) => general_tool::run_install(args, &tools, &client, &paths).await,
         Command::GetVers(args) => general_tool::run_get_vers(args, &tools).await,
         Command::GetDowninfo(args) => general_tool::run_get_downinfo(args, &tools).await,
-        Command::HelpSelector => general_tool::run_help_selector(),
         Command::InstallLocal(args) => general_tool::run_install_local(args, &paths).await,
         Command::List(args) => general_tool::run_list(args, &paths).await,
         Command::Path(args) => general_tool::run_path(args, &paths),
