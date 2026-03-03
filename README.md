@@ -6,9 +6,9 @@
 
 Built-in general tools:
 
-- `go`
-- `node`
-- `liberica`
+- `go`: Go programming language
+- `node`: Node.js JavaScript runtime
+- `liberica`: Liberica Java JDK/JRE
 
 Use `avm tool` to list all supported tools, and `avm tool <tool>` to inspect platform/flavor values and install examples.
 
@@ -34,6 +34,7 @@ avm install liberica --platform x64-linux --flavor jdk
 - Use `avm path <tool> [tag]` or `avm exe-path <tool> [tag]` and wire paths in your shell config.
 - Tags and aliases are filesystem-based and can be managed with `alias`, `copy`, `remove`, and `clean`.
   - This means an alias tag can point to arbitary versions while having the same path
+- For offline installation:
   1. Run `avm get-downinfo <tool> ...` to obtain URL/hash metadata.
   2. Download the archive.
   3. Run `avm install-local <tool> <archive> <target_tag> [--hash ...]`.
@@ -78,7 +79,7 @@ avm path node arm64-mac_22.22.0
 If you wire your shell to use the alias path (for example `$(avm path node default)`),
 updating the alias switches the tool version without changing the path.
 
-The `default` tag is treated specially. It is the default tag to run with `avm run` if no flags are provided and can be set automatically during installation with the `--default` option.
+The `default` tag is treated specially. It is the default tag to run with `avm run` and `avm path` if no extra arguments are provided and can be set automatically during installation with the `--default` option.
 
 ## Configuration
 
