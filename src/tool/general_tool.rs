@@ -1,6 +1,7 @@
 pub mod go;
 pub mod liberica;
 pub mod node;
+pub mod pnpm;
 
 use crate::io::{
     blocking, ArchiveExtractInfo, ArchiveType, DownloadExtractCallback, DownloadExtractState,

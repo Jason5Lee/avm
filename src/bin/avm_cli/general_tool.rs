@@ -5,7 +5,7 @@ use std::sync::Arc;
 use crate::avm_cli::Paths;
 use crate::HttpClient;
 use any_version_manager::tool::general_tool::{
-    self, go as go_tool, liberica as liberica_tool, node as node_tool,
+    self, go as go_tool, liberica as liberica_tool, node as node_tool, pnpm as pnpm_tool,
 };
 use any_version_manager::tool::{GeneralTool, ToolInfo, Version, VersionFilter, VersionPrefix};
 use any_version_manager::DefaultPlatform;
@@ -18,6 +18,7 @@ pub enum ToolName {
     Liberica,
     Go,
     Node,
+    Pnpm,
 }
 
 impl ToolName {
@@ -33,6 +34,7 @@ pub struct ToolSet {
     pub liberica: liberica_tool::Tool,
     pub go: go_tool::Tool,
     pub node: node_tool::Tool,
+    pub pnpm: pnpm_tool::Tool,
 }
 
 pub trait FnTool {
@@ -52,6 +54,7 @@ fn invoke_tool<FT: FnTool>(tool_set: &ToolSet, tool_name: ToolName, fn_tool: &FT
         ToolName::Liberica => fn_tool.invoke(&tool_set.liberica),
         ToolName::Go => fn_tool.invoke(&tool_set.go),
         ToolName::Node => fn_tool.invoke(&tool_set.node),
+        ToolName::Pnpm => fn_tool.invoke(&tool_set.pnpm),
     }
 }
 
@@ -64,6 +67,7 @@ async fn async_invoke_tool<FT: AsyncFnTool>(
         ToolName::Liberica => fn_tool.invoke(&tool_set.liberica).await,
         ToolName::Go => fn_tool.invoke(&tool_set.go).await,
         ToolName::Node => fn_tool.invoke(&tool_set.node).await,
+        ToolName::Pnpm => fn_tool.invoke(&tool_set.pnpm).await,
     }
 }
 
@@ -79,7 +83,8 @@ impl ToolSet {
         Self {
             liberica: liberica_tool::Tool::new(client.clone(), resolve("liberica")),
             go: go_tool::Tool::new(client.clone(), resolve("go")),
-            node: node_tool::Tool::new(client, resolve("node")),
+            node: node_tool::Tool::new(client.clone(), resolve("node")),
+            pnpm: pnpm_tool::Tool::new(client),
         }
     }
 
@@ -88,10 +93,11 @@ impl ToolSet {
             ToolName::Liberica => self.liberica.info(),
             ToolName::Go => self.go.info(),
             ToolName::Node => self.node.info(),
+            ToolName::Pnpm => self.pnpm.info(),
         }
     }
 
-    pub fn all_infos(&self) -> [(String, &ToolInfo); 3] {
+    pub fn all_infos(&self) -> [(String, &ToolInfo); 4] {
         [
             (ToolName::Go.command_name(), self.tool_info(ToolName::Go)),
             (
@@ -101,6 +107,10 @@ impl ToolSet {
             (
                 ToolName::Node.command_name(),
                 self.tool_info(ToolName::Node),
+            ),
+            (
+                ToolName::Pnpm.command_name(),
+                self.tool_info(ToolName::Pnpm),
             ),
         ]
     }

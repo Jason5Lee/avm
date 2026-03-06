@@ -18,7 +18,7 @@ impl ArchiveType {
     pub(crate) fn from_path(path: &[u8]) -> anyhow::Result<ArchiveType> {
         if path.ends_with(b".zip") {
             Ok(ArchiveType::Zip)
-        } else if path.ends_with(b".tar.gz") {
+        } else if path.ends_with(b".tar.gz") || path.ends_with(b".tgz") {
             Ok(ArchiveType::TarGz)
         } else if path.ends_with(b".tar.xz") {
             Ok(ArchiveType::TarXz)

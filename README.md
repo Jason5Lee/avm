@@ -121,9 +121,9 @@ go = "arm64-macos"      # tool-specific override (takes precedence over global)
 * [x] Liberica JDK/JRE
 * [x] Go
 * [x] Node.js
-* [ ] .NET
-* [ ] pnpm
+* [x] pnpm
   * Manage multiple pnpm versions is needed based on real-world usage scenarios.
+* [ ] .NET
 * [ ] gcc
 * [ ] clang
 * [ ] Feature: External Alias

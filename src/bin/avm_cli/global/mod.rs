@@ -47,10 +47,7 @@ fn print_tool_detail(tool: ToolName, tools: &ToolSet) {
     }
 
     if let Some(default_platform) = &info.default_platform {
-        println!(
-            "Default platform (compile-target, resolved at build time): {}",
-            default_platform
-        );
+        println!("Default platform: {}", default_platform);
     }
     if let Some(default_flavor) = &info.default_flavor {
         println!("Default flavor: {}", default_flavor);
