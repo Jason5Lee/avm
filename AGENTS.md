@@ -23,7 +23,7 @@ Guidance:
 
 - `src/lib.rs`: library entry.
 - `src/tool.rs`: tool traits and shared metadata (`ToolInfo`, `GeneralTool`).
-- `src/tool/general_tool/`: built-in general tool implementations (`go`, `node`, `liberica`).
+- `src/tool/general_tool/`: built-in general tool implementations (`go`, `node`, `liberica`, `pnpm`).
 - `src/bin/avm.rs`: CLI binary entry.
 - `src/bin/avm_cli/mod.rs`: top-level Clap parser, config loading, and command dispatch.
 - `src/bin/avm_cli/general_tool/`: argument types and handlers for tool-specific commands.

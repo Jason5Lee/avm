@@ -9,6 +9,7 @@ Built-in general tools:
 - `go`: Go programming language
 - `node`: Node.js JavaScript runtime
 - `liberica`: Liberica Java JDK/JRE
+- `pnpm`: Fast, disk space efficient package manager for Node.js
 
 Use `avm tool` to list all supported tools, and `avm tool <tool>` to inspect platform/flavor values and install examples.
 
@@ -23,9 +24,10 @@ avm <subcommand> <tool> [args]
 Examples:
 
 ```bash
-avm install node --lts
-avm get-vers go --platform x64-linux
+avm install node --lts-only # Install the latest LTS version
+avm get-vers go --platform x64-linux # Install the latest non-prerelease x64 Linux (no matter what platform it runs on) version.
 avm install liberica --platform x64-linux --flavor jdk
+avm install pnpm -x 10 # Install the latest non-prerelease version in the 10.x.x series.
 ```
 
 ## Usage Notes
