@@ -51,7 +51,7 @@ Guidance:
 - This pattern is not limited to `src/bin/avm_cli/general_tool.rs`; it applies to any module that performs tool-specific behavior through shared dispatch.
 - Use `invoke_tool(...)` for synchronous operations and `async_invoke_tool(...)` for asynchronous operations.
 - Prefer this pattern over repeating `match ToolName { ... }` branches at each call site.
-- Implement operation-specific context as small structs (for example, `RunInstallFn`, `RunExePathFn`) and implement `FnTool`/`AsyncFnTool` on them.
+- Implement operation-specific context as small structs (for example, `RunInstallFn`, `RunEntryPathFn`) and implement `FnTool`/`AsyncFnTool` on them.
 - Keep direct non-dispatch calls (such as archive/tag filesystem operations that only need `tool_name`) outside this pattern when no `GeneralTool` instance is required.
 - For logic coupled to a specific tool (for example, tool-specific descriptions or behavior variants), define it as a `GeneralTool` trait method (with a default implementation when appropriate) and call it through dispatch. This keeps call sites open for extension and avoids hard-coded tool branches outside tool implementations.
 

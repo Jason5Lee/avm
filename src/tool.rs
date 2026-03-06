@@ -158,5 +158,5 @@ pub trait GeneralTool: Send + Sync {
     ) -> Option<SmolStr>
     where
         I: Iterator<Item = (&'a str, &'a Version)>;
-    fn exe_path(&self, tag_dir: PathBuf) -> anyhow::Result<PathBuf>;
+    fn entry_path(&self, tag_dir: PathBuf) -> anyhow::Result<PathBuf>;
 }

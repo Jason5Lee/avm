@@ -136,7 +136,11 @@ pub struct SelectorArgs {
         help = "Version prefix in strict x, x.y, or x.y.z format."
     )]
     pub version_prefix: Option<String>,
-    #[arg(short = 'p', long, help = "Target platform identifier.")]
+    #[arg(
+        short = 'p',
+        long,
+        help = "Target platform identifier. Defaults to the avm binary's compile-target platform unless overridden by config."
+    )]
     pub platform: Option<String>,
     #[arg(short = 'f', long, help = "Tool-specific flavor identifier.")]
     pub flavor: Option<String>,
@@ -239,7 +243,7 @@ pub struct PathArgs {
 }
 
 #[derive(Debug, Clone, Args)]
-pub struct ExePathArgs {
+pub struct EntryPathArgs {
     #[arg(value_enum, help = "Tool name.")]
     pub tool: ToolName,
     #[arg(
@@ -392,18 +396,18 @@ impl AsyncFnTool for RunGetDowninfoFn<'_> {
     }
 }
 
-struct RunExePathFn<'a> {
+struct RunEntryPathFn<'a> {
     tool_name: &'a str,
     tools_base: &'a Path,
-    args: &'a ExePathArgs,
+    args: &'a EntryPathArgs,
 }
 
-impl FnTool for RunExePathFn<'_> {
+impl FnTool for RunEntryPathFn<'_> {
     type Output = anyhow::Result<()>;
 
     fn invoke(&self, tool: &impl GeneralTool) -> Self::Output {
         let path =
-            general_tool::get_exe_path(self.tool_name, tool, self.tools_base, &self.args.tag)?;
+            general_tool::get_entry_path(self.tool_name, tool, self.tools_base, &self.args.tag)?;
         println!("{}", path.display());
         Ok(())
     }
@@ -542,9 +546,9 @@ pub fn run_path(args: PathArgs, paths: &Paths) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn run_exe_path(args: ExePathArgs, tools: &ToolSet, paths: &Paths) -> anyhow::Result<()> {
+pub fn run_entry_path(args: EntryPathArgs, tools: &ToolSet, paths: &Paths) -> anyhow::Result<()> {
     let tool_name = args.tool.command_name();
-    let fn_tool = RunExePathFn {
+    let fn_tool = RunEntryPathFn {
         tool_name: &tool_name,
         tools_base: &paths.tool_dir,
         args: &args,

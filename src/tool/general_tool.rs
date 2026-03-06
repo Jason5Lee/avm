@@ -549,14 +549,14 @@ pub fn get_tag_path(tool_name: &str, tools_base: &Path, tag: &str) -> anyhow::Re
     Ok(tag_path)
 }
 
-pub fn get_exe_path(
+pub fn get_entry_path(
     tool_name: &str,
     tool: &impl GeneralTool,
     tools_base: &Path,
     tag: &str,
 ) -> anyhow::Result<PathBuf> {
     let tag_dir = get_tag_path(tool_name, tools_base, tag)?;
-    tool.exe_path(tag_dir)
+    tool.entry_path(tag_dir)
 }
 
 pub async fn run_command(
@@ -566,7 +566,7 @@ pub async fn run_command(
     tag: &str,
     args: Vec<OsString>,
 ) -> anyhow::Result<std::process::Command> {
-    let bin_path = get_exe_path(tool_name, tool, tools_base, tag)?;
+    let bin_path = get_entry_path(tool_name, tool, tools_base, tag)?;
     let mut command = std::process::Command::new(bin_path);
     command.args(args);
     Ok(command)

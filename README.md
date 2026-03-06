@@ -31,7 +31,8 @@ avm install liberica --platform x64-linux --flavor jdk
 ## Usage Notes
 
 - `avm` does not modify shell environment variables.
-- Use `avm path <tool> [tag]` or `avm exe-path <tool> [tag]` and wire paths in your shell config.
+- Use `avm path <tool> [tag]` or `avm entry-path <tool> [tag]` and wire paths in your shell config.
+- `entry-path` may point to an executable binary or to a runtime entry file that should be invoked by the corresponding runtime.
 - Tags and aliases are filesystem-based and can be managed with `alias`, `copy`, `remove`, and `clean`.
   - This means an alias tag can point to arbitary versions while having the same path
 - For offline installation:
@@ -105,11 +106,11 @@ to = "https://mirror.example.com/tool"
 
 # Optional: Override the default platform for tools that support platform selection
 # (currently: go, node, liberica).
-# By default, AVM detects the platform from the current OS and CPU.
+# By default, AVM uses the compile-target platform baked into the avm binary at build time.
 # The value must be a valid platform string for the tool (see `avm tool <tool>` for available platforms).
 # If the value does not match any supported platform of the tool, it is ignored
-# and detection falls back to the current OS and CPU.
-# Resolution order: tool-specific entry -> global -> current OS and CPU.
+# and fallback uses that same compile-target platform.
+# Resolution order: tool-specific entry -> global -> compile-target platform.
 [default-platform]
 global = "x64-linux"    # applies to all tools that support platform selection
 go = "arm64-macos"      # tool-specific override (takes precedence over global)

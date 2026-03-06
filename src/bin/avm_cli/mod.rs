@@ -54,8 +54,8 @@ pub enum Command {
     #[command(about = "Get the tool path of a specific tag")]
     Path(general_tool::PathArgs),
 
-    #[command(about = "Get the path of the executable program")]
-    ExePath(general_tool::ExePathArgs),
+    #[command(about = "Get the tool entry path (executable binary or runtime entry file)")]
+    EntryPath(general_tool::EntryPathArgs),
 
     #[command(about = "Run by tag, selector, or default tag")]
     Run(general_tool::RunArgs),
@@ -119,7 +119,7 @@ pub async fn run(
         Command::InstallLocal(args) => general_tool::run_install_local(args, &paths).await,
         Command::List(args) => general_tool::run_list(args, &paths).await,
         Command::Path(args) => general_tool::run_path(args, &paths),
-        Command::ExePath(args) => general_tool::run_exe_path(args, &tools, &paths),
+        Command::EntryPath(args) => general_tool::run_entry_path(args, &tools, &paths),
         Command::Run(args) => general_tool::run_run(args, &tools, &client, &paths).await,
         Command::Alias(args) => general_tool::run_alias(args, &paths).await,
         Command::Copy(args) => general_tool::run_copy(args, &paths).await,

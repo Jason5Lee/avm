@@ -134,7 +134,7 @@ impl crate::tool::GeneralTool for Tool {
             .map(|(_, tag)| tag)
     }
 
-    fn exe_path(&self, tag_dir: PathBuf) -> anyhow::Result<PathBuf> {
+    fn entry_path(&self, tag_dir: PathBuf) -> anyhow::Result<PathBuf> {
         let mut p = tag_dir;
         p.push("bin");
         #[cfg(windows)]
