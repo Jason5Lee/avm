@@ -169,11 +169,13 @@ impl crate::tool::GeneralTool for Tool {
 
     fn entry_path(&self, tag_dir: PathBuf) -> anyhow::Result<PathBuf> {
         let mut p = tag_dir;
-        p.push("bin");
         #[cfg(windows)]
         p.push("node.exe");
         #[cfg(not(windows))]
-        p.push("node");
+        {
+            p.push("bin");
+            p.push("node");
+        }
         Ok(p)
     }
 }
