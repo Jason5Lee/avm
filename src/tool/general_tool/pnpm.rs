@@ -4,6 +4,9 @@ use smol_str::SmolStr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+#[cfg(windows)]
+use std::ffi::OsString;
+
 use crate::tool::{ToolDownInfo, ToolInfo, Version, VersionFilter};
 use crate::HttpClient;
 
@@ -25,6 +28,7 @@ impl crate::tool::GeneralTool for Tool {
         _flavor: Option<SmolStr>,
         version_filter: VersionFilter,
     ) -> anyhow::Result<Vec<Version>> {
+        let version_filter = ignore_lts_only(version_filter);
         let version_filter = PnpmVersionFilter::try_from(&version_filter)?;
 
         let registry = self.fetch_registry(&self.client).await?;
@@ -60,6 +64,7 @@ impl crate::tool::GeneralTool for Tool {
         _flavor: Option<SmolStr>,
         version_filter: VersionFilter,
     ) -> anyhow::Result<ToolDownInfo> {
+        let version_filter = ignore_lts_only(version_filter);
         let version_filter = PnpmVersionFilter::try_from(&version_filter)?;
 
         let registry = self.fetch_registry(&self.client).await?;
@@ -101,7 +106,8 @@ impl crate::tool::GeneralTool for Tool {
     where
         I: Iterator<Item = (&'a str, &'a Version)>,
     {
-        let version_filter = PnpmVersionFilter::try_from(version_filter).ok()?;
+        let version_filter = ignore_lts_only(version_filter.clone());
+        let version_filter = PnpmVersionFilter::try_from(&version_filter).ok()?;
         tags_and_versions
             .filter_map(|(tag, version_info)| {
                 let raw_version = &*version_info.version;
@@ -120,6 +126,18 @@ impl crate::tool::GeneralTool for Tool {
         p.push("bin");
         p.push("pnpm.cjs");
         Ok(p)
+    }
+
+    #[cfg(windows)]
+    async fn run(&self, entry_path: PathBuf, args: Vec<OsString>) -> anyhow::Result<()> {
+        crate::spawn_blocking(move || {
+            let mut command = std::process::Command::new("node.exe");
+            command.arg(entry_path);
+            command.args(args);
+            command.spawn()?.wait()?;
+            Ok(())
+        })
+        .await
     }
 }
 
@@ -258,6 +276,16 @@ impl TryFrom<&VersionFilter> for PnpmVersionFilter {
     }
 }
 
+fn ignore_lts_only(mut version_filter: VersionFilter) -> VersionFilter {
+    if version_filter.lts_only {
+        log::warn!(
+            "`--lts-only` is ignored for `pnpm` because this tool does not define LTS releases."
+        );
+        version_filter.lts_only = false;
+    }
+    version_filter
+}
+
 /// Parses a pnpm version string (semver with optional pre-release).
 /// Examples: "9.9.0", "11.0.0-alpha.12", "1.24.0-0"
 pub fn parse_pnpm_version(s: &str) -> anyhow::Result<PnpmVersion> {
@@ -298,6 +326,7 @@ pub fn parse_pnpm_version(s: &str) -> anyhow::Result<PnpmVersion> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tool::VersionFilter;
 
     #[test]
     fn test_parse_pnpm_version() {
@@ -369,5 +398,19 @@ mod tests {
         assert!(parse_pnpm_version("9.9").is_err());
         assert!(parse_pnpm_version("abc").is_err());
         assert!(parse_pnpm_version("9.9.0-").is_err());
+    }
+
+    #[test]
+    fn version_filter_ignores_lts_only() {
+        let filter = PnpmVersionFilter::try_from(&VersionFilter {
+            lts_only: true,
+            allow_prerelease: false,
+            version_prefix: None,
+            exact_version: None,
+        })
+        .unwrap();
+        let version = parse_pnpm_version("9.9.0").unwrap();
+
+        assert!(filter.matches("9.9.0", &version));
     }
 }

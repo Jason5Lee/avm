@@ -1,3 +1,4 @@
+pub mod dotnet;
 pub mod go;
 pub mod liberica;
 pub mod node;
@@ -11,7 +12,6 @@ use crate::{HttpClient, Tag};
 use async_trait::async_trait;
 use rustc_hash::FxHashSet;
 use smol_str::SmolStr;
-use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 const TMP_PREFIX: &str = ".tmp.";
@@ -19,7 +19,7 @@ const DEFAULT_TAG: &str = "default";
 const VERSION_INFO_FILE: &str = ".avm.version-info.toml";
 
 pub fn default_tag() -> Tag {
-    Tag::try_from(SmolStr::new(DEFAULT_TAG)).expect("Default tag is invalid")
+    Tag::try_from(SmolStr::new(DEFAULT_TAG)).expect("Default tag is invalid") // DEFAULT_TAG is a constant that should be defined as a valid tag.
 }
 
 struct InstallCustomAction {
@@ -550,27 +550,14 @@ pub fn get_tag_path(tool_name: &str, tools_base: &Path, tag: &str) -> anyhow::Re
     Ok(tag_path)
 }
 
-pub fn get_entry_path(
+pub fn get_entry_path<T: GeneralTool + ?Sized>(
     tool_name: &str,
-    tool: &impl GeneralTool,
+    tool: &T,
     tools_base: &Path,
     tag: &str,
 ) -> anyhow::Result<PathBuf> {
     let tag_dir = get_tag_path(tool_name, tools_base, tag)?;
     tool.entry_path(tag_dir)
-}
-
-pub async fn run_command(
-    tool_name: &str,
-    tool: &impl GeneralTool,
-    tools_base: &Path,
-    tag: &str,
-    args: Vec<OsString>,
-) -> anyhow::Result<std::process::Command> {
-    let bin_path = get_entry_path(tool_name, tool, tools_base, tag)?;
-    let mut command = std::process::Command::new(bin_path);
-    command.args(args);
-    Ok(command)
 }
 
 /// Clean up the temporary directories and dangling alias tags

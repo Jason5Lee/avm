@@ -1,5 +1,5 @@
 pub mod general_tool;
-use std::{future::Future, path::PathBuf};
+use std::{ffi::OsString, future::Future, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 use smol_str::{SmolStr, SmolStrBuilder};
@@ -159,4 +159,19 @@ pub trait GeneralTool: Send + Sync {
     where
         I: Iterator<Item = (&'a str, &'a Version)>;
     fn entry_path(&self, tag_dir: PathBuf) -> anyhow::Result<PathBuf>;
+    fn run(
+        &self,
+        entry_path: PathBuf,
+        args: Vec<OsString>,
+    ) -> impl Future<Output = anyhow::Result<()>> + Send {
+        async move {
+            crate::spawn_blocking(move || {
+                let mut command = std::process::Command::new(entry_path);
+                command.args(args);
+                command.spawn()?.wait()?;
+                Ok(())
+            })
+            .await
+        }
+    }
 }

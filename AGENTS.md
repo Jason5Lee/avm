@@ -2,17 +2,12 @@
 
 This document defines repository-wide instructions for coding agents.
 
-## Scope
-
-- Global: applies to the entire repository unless a narrower rule overrides it.
-
-## Global Rules
-
-### Language
+## Language
 
 All code comments, commit messages, documentation strings, error messages, and user-facing text in this repository must be written in English.
 
 Guidance:
+
 - Write all inline comments in English.
 - Write thrown error messages and logs in English.
 - Write documentation and docstrings in English.
@@ -76,6 +71,7 @@ Guidance:
 
 ## Development Notes
 
+- Keep the code as close to the intent as possible without compromising performance.
 - Prefer minimal, type-safe changes to argument structs in `src/bin/avm_cli/general_tool/mod.rs`.
 - Keep command handler modules focused on business logic (`install.rs`, `get_vers.rs`, etc.) and avoid duplicating parsing logic there.
 - `src/io/blocking` contains blocking I/O helpers; when calling them from async code, wrap the blocking work in `spawn_blocking`.

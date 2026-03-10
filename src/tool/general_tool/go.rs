@@ -30,7 +30,8 @@ impl crate::tool::GeneralTool for Tool {
         version_filter: VersionFilter,
     ) -> anyhow::Result<Vec<Version>> {
         let platform = platform.ok_or_else(|| anyhow::anyhow!("Platform is required"))?;
-        let (cpu, os) = self.get_dto_cpu_os(&platform);
+        let (cpu, os) = self.get_dto_cpu_os(&platform)?;
+        let version_filter = ignore_lts_only(version_filter);
         let version_filter = GoVersionFilter::try_from(&version_filter)?;
 
         let mut releases = self
@@ -59,7 +60,7 @@ impl crate::tool::GeneralTool for Tool {
             if version_set.insert(version_raw.clone()) {
                 versions.push(Version {
                     version: version_raw,
-                    is_lts: release.0.is_lts(),
+                    is_lts: false,
                 });
             }
         }
@@ -74,8 +75,9 @@ impl crate::tool::GeneralTool for Tool {
         version_filter: VersionFilter,
     ) -> anyhow::Result<ToolDownInfo> {
         let platform = platform.ok_or_else(|| anyhow::anyhow!("Platform is required"))?;
-        let (cpu, os) = self.get_dto_cpu_os(&platform);
+        let (cpu, os) = self.get_dto_cpu_os(&platform)?;
 
+        let version_filter = ignore_lts_only(version_filter);
         let version_filter = GoVersionFilter::try_from(&version_filter)?;
 
         let release = self
@@ -95,11 +97,10 @@ impl crate::tool::GeneralTool for Tool {
             })
             .max_by(|a, b| a.0.cmp(&b.0));
         if let Some((_, raw_version, item)) = release {
-            let (_, version) = parse_go_version(&format!("go{raw_version}"))?;
             Ok(ToolDownInfo {
                 version: Version {
                     version: raw_version,
-                    is_lts: version.is_lts(),
+                    is_lts: false,
                 },
                 url: smol_str::format_smolstr!("{}{}", BASE_URL, item.filename),
                 hash: crate::FileHash {
@@ -120,7 +121,8 @@ impl crate::tool::GeneralTool for Tool {
     where
         I: Iterator<Item = (&'a str, &'a Version)>,
     {
-        let version_filter = GoVersionFilter::try_from(version_filter).ok()?;
+        let version_filter = ignore_lts_only(version_filter.clone());
+        let version_filter = GoVersionFilter::try_from(&version_filter).ok()?;
         tags_and_versions
             .filter_map(|(tag, version_info)| {
                 let raw_version = &*version_info.version;
@@ -256,20 +258,24 @@ impl Tool {
         (platforms, dto_cpu_os)
     }
 
-    fn get_dto_cpu_os(&self, platform: &SmolStr) -> (&'static str, &'static str) {
-        let platform_index = self
-            .info
-            .all_platforms
-            .as_ref()
-            .unwrap()
+    fn get_dto_cpu_os(&self, platform: &SmolStr) -> anyhow::Result<(&'static str, &'static str)> {
+        let platforms =
+            self.info.all_platforms.as_ref().ok_or_else(|| {
+                anyhow::anyhow!("go tool metadata is missing supported platforms")
+            })?;
+        let platform_index = platforms
             .iter()
             .position(|p| p == platform)
-            .unwrap();
-        self.corresponding_dto_cpu_os[platform_index]
+            .ok_or_else(|| anyhow::anyhow!("Unsupported Go platform: {platform}"))?;
+
+        self.corresponding_dto_cpu_os
+            .get(platform_index)
+            .copied()
+            .ok_or_else(|| anyhow::anyhow!("Missing Go platform mapping for: {platform}"))
     }
 
     async fn fetch_go_releases(&self, client: &HttpClient) -> reqwest::Result<Vec<ReleaseDto>> {
-        let mut url = reqwest::Url::parse(BASE_URL).expect("BASE_URL should be a valid URL");
+        let mut url = reqwest::Url::parse(BASE_URL).expect("BASE_URL should be a valid URL"); // BASE_URL is a constant that should be defined as a valid Url.
         url.query_pairs_mut()
             .append_pair("mode", "json")
             .append_pair("include", "all");
@@ -326,14 +332,7 @@ pub struct GoVersion {
     pre_release: PreRelease,
 }
 
-impl GoVersion {
-    fn is_lts(&self) -> bool {
-        self.pre_release == PreRelease::None
-    }
-}
-
 struct GoVersionFilter {
-    lts_only: bool,
     allow_prerelease: bool,
     version_prefix: Option<crate::tool::VersionPrefix>,
     exact_version: Option<SmolStr>,
@@ -342,14 +341,10 @@ struct GoVersionFilter {
 impl GoVersionFilter {
     fn matches(&self, raw_version: &str, version: &GoVersion) -> bool {
         let Self {
-            lts_only,
             allow_prerelease,
             version_prefix,
             exact_version,
         } = self;
-        if *lts_only && !version.is_lts() {
-            return false;
-        }
         if !*allow_prerelease && version.pre_release != PreRelease::None {
             return false;
         }
@@ -370,12 +365,21 @@ impl TryFrom<&VersionFilter> for GoVersionFilter {
 
     fn try_from(value: &VersionFilter) -> Result<Self, Self::Error> {
         Ok(Self {
-            lts_only: value.lts_only,
             allow_prerelease: value.allow_prerelease,
             version_prefix: value.version_prefix,
             exact_version: value.exact_version.clone(),
         })
     }
+}
+
+fn ignore_lts_only(mut version_filter: VersionFilter) -> VersionFilter {
+    if version_filter.lts_only {
+        log::warn!(
+            "`--lts-only` is ignored for `go` because this tool does not define LTS releases."
+        );
+        version_filter.lts_only = false;
+    }
+    version_filter
 }
 
 /// Parses a Go version string and returns the trimmed version string and parsed GoVersion.
@@ -474,6 +478,7 @@ pub fn parse_go_version(s: &str) -> anyhow::Result<(&str, GoVersion)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tool::VersionFilter;
 
     #[rustfmt::skip]
     #[test]
@@ -816,5 +821,19 @@ mod tests {
         assert!(parse_go_version("g1.10").is_err()); // Invalid prefix
         assert!(parse_go_version("go1..2").is_err()); // Empty minor part
         assert!(parse_go_version("go.1.2").is_err()); // Empty major part
+    }
+
+    #[test]
+    fn version_filter_ignores_lts_only() {
+        let filter = GoVersionFilter::try_from(&VersionFilter {
+            lts_only: true,
+            allow_prerelease: false,
+            version_prefix: None,
+            exact_version: None,
+        })
+        .unwrap();
+        let (_, version) = parse_go_version("go1.24.1").unwrap();
+
+        assert!(filter.matches("1.24.1", &version));
     }
 }

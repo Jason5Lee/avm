@@ -64,7 +64,7 @@ impl crate::tool::GeneralTool for Tool {
         version_filter: VersionFilter,
     ) -> anyhow::Result<Vec<Version>> {
         let platform = platform.ok_or_else(|| anyhow::anyhow!("Platform is required"))?;
-        let (cpu, os, bitness) = self.get_dto_os_arch_bitness(&platform);
+        let (cpu, os, bitness) = self.get_dto_os_arch_bitness(&platform)?;
         let flavor = Flavor::parse(flavor.as_deref())?;
 
         let args = FetchReleaseArgs {
@@ -105,7 +105,7 @@ impl crate::tool::GeneralTool for Tool {
         version_filter: VersionFilter,
     ) -> anyhow::Result<ToolDownInfo> {
         let platform = platform.ok_or_else(|| anyhow::anyhow!("Platform is required"))?;
-        let (cpu, os, bitness) = self.get_dto_os_arch_bitness(&platform);
+        let (cpu, os, bitness) = self.get_dto_os_arch_bitness(&platform)?;
         let flavor = Flavor::parse(flavor.as_deref())?;
 
         let args = FetchReleaseArgs {
@@ -263,16 +263,22 @@ These distributions are designed for building native executables from Java bytec
         (platforms, corresponding_dto_os_arch_bitness)
     }
 
-    fn get_dto_os_arch_bitness(&self, platform: &str) -> (&'static str, &'static str, u32) {
-        let index = self
-            .info
-            .all_platforms
-            .as_ref()
-            .unwrap()
+    fn get_dto_os_arch_bitness(
+        &self,
+        platform: &str,
+    ) -> anyhow::Result<(&'static str, &'static str, u32)> {
+        let platforms = self.info.all_platforms.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("liberica tool metadata is missing supported platforms")
+        })?;
+        let index = platforms
             .iter()
             .position(|p| p == platform)
-            .unwrap();
-        self.corresponding_dto_os_arch_bitness[index]
+            .ok_or_else(|| anyhow::anyhow!("Unsupported Liberica platform: {platform}"))?;
+
+        self.corresponding_dto_os_arch_bitness
+            .get(index)
+            .copied()
+            .ok_or_else(|| anyhow::anyhow!("Missing Liberica platform mapping for: {platform}"))
     }
 
     async fn fetch_liberica_releases(
@@ -285,7 +291,7 @@ These distributions are designed for building native executables from Java bytec
             args.os,
             args.bitness,
             &args.flavor.bundle_type,
-        );
+        )?;
 
         if let Some(version_prefix) = args.version_filter.version_prefix {
             url.query_pairs_mut()
@@ -335,7 +341,7 @@ These distributions are designed for building native executables from Java bytec
             args.os,
             args.bitness,
             &args.flavor.bundle_type,
-        );
+        )?;
 
         let release_type = if args.version_filter.lts_only {
             "lts"
@@ -384,15 +390,16 @@ These distributions are designed for building native executables from Java bytec
         os: &str,
         bitness: u32,
         bundle_type: &str,
-    ) -> reqwest::Url {
-        let mut url = reqwest::Url::parse(&base_url).expect("base_url should be a valid URL");
+    ) -> anyhow::Result<reqwest::Url> {
+        let mut url = reqwest::Url::parse(&base_url)
+            .map_err(|err| anyhow::anyhow!("Invalid Liberica API base URL '{base_url}': {err}"))?;
         url.query_pairs_mut()
             .append_pair("arch", arch)
             .append_pair("os", os)
             .append_pair("installation-type", "archive")
             .append_pair("bitness", &bitness.to_string())
             .append_pair("bundle-type", bundle_type);
-        url
+        Ok(url)
     }
 }
 

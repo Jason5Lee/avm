@@ -5,7 +5,8 @@ use std::sync::Arc;
 use crate::avm_cli::Paths;
 use crate::HttpClient;
 use any_version_manager::tool::general_tool::{
-    self, go as go_tool, liberica as liberica_tool, node as node_tool, pnpm as pnpm_tool,
+    self, dotnet as dotnet_tool, go as go_tool, liberica as liberica_tool, node as node_tool,
+    pnpm as pnpm_tool,
 };
 use any_version_manager::tool::{GeneralTool, ToolInfo, Version, VersionFilter, VersionPrefix};
 use any_version_manager::DefaultPlatform;
@@ -15,6 +16,7 @@ use smol_str::SmolStr;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, ValueEnum)]
 pub enum ToolName {
+    Dotnet,
     Liberica,
     Go,
     Node,
@@ -31,6 +33,7 @@ impl ToolName {
 }
 
 pub struct ToolSet {
+    pub dotnet: dotnet_tool::Tool,
     pub liberica: liberica_tool::Tool,
     pub go: go_tool::Tool,
     pub node: node_tool::Tool,
@@ -51,6 +54,7 @@ trait AsyncFnTool {
 
 fn invoke_tool<FT: FnTool>(tool_set: &ToolSet, tool_name: ToolName, fn_tool: &FT) -> FT::Output {
     match tool_name {
+        ToolName::Dotnet => fn_tool.invoke(&tool_set.dotnet),
         ToolName::Liberica => fn_tool.invoke(&tool_set.liberica),
         ToolName::Go => fn_tool.invoke(&tool_set.go),
         ToolName::Node => fn_tool.invoke(&tool_set.node),
@@ -64,6 +68,7 @@ async fn async_invoke_tool<FT: AsyncFnTool>(
     fn_tool: &FT,
 ) -> FT::Output {
     match tool_name {
+        ToolName::Dotnet => fn_tool.invoke(&tool_set.dotnet).await,
         ToolName::Liberica => fn_tool.invoke(&tool_set.liberica).await,
         ToolName::Go => fn_tool.invoke(&tool_set.go).await,
         ToolName::Node => fn_tool.invoke(&tool_set.node).await,
@@ -81,6 +86,7 @@ impl ToolSet {
                 .map(SmolStr::new)
         };
         Self {
+            dotnet: dotnet_tool::Tool::new(client.clone(), resolve("dotnet")),
             liberica: liberica_tool::Tool::new(client.clone(), resolve("liberica")),
             go: go_tool::Tool::new(client.clone(), resolve("go")),
             node: node_tool::Tool::new(client.clone(), resolve("node")),
@@ -90,6 +96,7 @@ impl ToolSet {
 
     pub fn tool_info(&self, tool: ToolName) -> &ToolInfo {
         match tool {
+            ToolName::Dotnet => self.dotnet.info(),
             ToolName::Liberica => self.liberica.info(),
             ToolName::Go => self.go.info(),
             ToolName::Node => self.node.info(),
@@ -97,7 +104,7 @@ impl ToolSet {
         }
     }
 
-    pub fn all_infos(&self) -> [(String, &ToolInfo); 4] {
+    pub fn all_infos(&self) -> [(String, &ToolInfo); 5] {
         [
             (ToolName::Go.command_name(), self.tool_info(ToolName::Go)),
             (
@@ -111,6 +118,10 @@ impl ToolSet {
             (
                 ToolName::Pnpm.command_name(),
                 self.tool_info(ToolName::Pnpm),
+            ),
+            (
+                ToolName::Dotnet.command_name(),
+                self.tool_info(ToolName::Dotnet),
             ),
         ]
     }
@@ -169,15 +180,20 @@ impl SelectorArgs {
             && !self.lts_only
             && !self.allow_prerelease
     }
+}
 
-    fn to_version_filter(&self) -> anyhow::Result<VersionFilter> {
-        to_version_filter(
-            self.version.as_deref(),
-            self.version_prefix.as_deref(),
-            self.lts_only,
-            self.allow_prerelease,
-        )
-    }
+fn resolve_selector_filters(
+    tool: &impl GeneralTool,
+    selector: &SelectorArgs,
+) -> anyhow::Result<(Option<SmolStr>, Option<SmolStr>, VersionFilter)> {
+    let (platform, flavor) = resolve_platform_flavor(tool, &selector.platform, &selector.flavor);
+    let version_filter = to_version_filter(
+        selector.version.as_deref(),
+        selector.version_prefix.as_deref(),
+        selector.lts_only,
+        selector.allow_prerelease,
+    )?;
+    Ok((platform, flavor, version_filter))
 }
 
 #[derive(Debug, Clone, Args)]
@@ -226,7 +242,7 @@ pub struct InstallLocalArgs {
     #[arg(
         long,
         value_name = "hash",
-        help = "Archive hash in TOML inline table format, for example `{ sha256 = \"...\" }` or `{ sha1 = \"...\" }`."
+        help = "Archive hash in TOML inline table format, for example `{ sha256 = \"...\" }`, `{ sha512 = \"...\" }`, or `{ sha1 = \"...\" }`."
     )]
     pub hash: Option<String>,
     #[arg(long, help = "Replace existing tag if already installed.")]
@@ -338,10 +354,7 @@ impl AsyncFnTool for RunInstallFn<'_> {
         let tools_base = self.tools_base;
         let args = self.args;
 
-        let selector = &args.selector;
-        let (platform, flavor) =
-            resolve_platform_flavor(tool, &selector.platform, &selector.flavor);
-        let install_version = selector.to_version_filter()?;
+        let (platform, flavor, install_version) = resolve_selector_filters(tool, &args.selector)?;
 
         let (target_tag, download_url, download_state) = general_tool::InstallArgs {
             tool_name,
@@ -372,10 +385,7 @@ impl AsyncFnTool for RunGetVersFn<'_> {
 
     async fn invoke(&self, tool: &impl GeneralTool) -> Self::Output {
         let args = self.args;
-        let selector = &args.selector;
-        let (platform, flavor) =
-            resolve_platform_flavor(tool, &selector.platform, &selector.flavor);
-        let version_filter = selector.to_version_filter()?;
+        let (platform, flavor, version_filter) = resolve_selector_filters(tool, &args.selector)?;
 
         let vers = general_tool::get_vers(tool, platform, flavor, version_filter).await?;
         for v in vers {
@@ -395,10 +405,7 @@ impl AsyncFnTool for RunGetDowninfoFn<'_> {
 
     async fn invoke(&self, tool: &impl GeneralTool) -> Self::Output {
         let args = self.args;
-        let selector = &args.selector;
-        let (platform, flavor) =
-            resolve_platform_flavor(tool, &selector.platform, &selector.flavor);
-        let install_version = selector.to_version_filter()?;
+        let (platform, flavor, install_version) = resolve_selector_filters(tool, &args.selector)?;
 
         let downinfo = general_tool::get_downinfo(tool, platform, flavor, install_version).await?;
         println!("{}", toml::to_string(&downinfo)?);
@@ -445,10 +452,8 @@ impl AsyncFnTool for RunRunFn<'_> {
             }
             SmolStr::from(tag.as_str())
         } else if !args.selector.is_empty() {
-            let selector = &args.selector;
-            let (platform, flavor) =
-                resolve_platform_flavor(tool, &selector.platform, &selector.flavor);
-            let version_filter = selector.to_version_filter()?;
+            let (platform, flavor, version_filter) =
+                resolve_selector_filters(tool, &args.selector)?;
 
             if let Some(local_tag) = general_tool::find_matching_local_tag(
                 tool_name,
@@ -482,13 +487,8 @@ impl AsyncFnTool for RunRunFn<'_> {
             SmolStr::new("default")
         };
 
-        let mut command =
-            general_tool::run_command(tool_name, tool, tools_base, &tag, args.args.clone()).await?;
-        any_version_manager::spawn_blocking(move || {
-            command.spawn()?.wait()?;
-            Ok(())
-        })
-        .await
+        let entry_path = general_tool::get_entry_path(tool_name, tool, tools_base, &tag)?;
+        tool.run(entry_path, args.args.clone()).await
     }
 }
 

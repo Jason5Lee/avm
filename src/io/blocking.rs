@@ -196,10 +196,22 @@ pub fn list_tags(
         match get_link_target(&entry.path()) {
             GetLinkResult::NotFound => {}
             GetLinkResult::Err(err) => return Err(err),
-            GetLinkResult::Link(target) => tags.push((
-                file_name,
-                Some(target.file_name().unwrap().to_string_lossy().into()),
-            )),
+            GetLinkResult::Link(target) => {
+                let target_name = target
+                    .file_name()
+                    .ok_or_else(|| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            format!(
+                                "Link target '{}' has no terminal path component",
+                                target.display()
+                            ),
+                        )
+                    })?
+                    .to_string_lossy()
+                    .into();
+                tags.push((file_name, Some(target_name)));
+            }
             GetLinkResult::NotLink => tags.push((file_name, None)),
         }
     }
@@ -225,6 +237,16 @@ pub(crate) fn verify_hash(hash: &FileHash, path: &Path) -> Result<(), anyhow::Er
         std::io::copy(&mut file, &mut hasher)?;
         if hasher.finalize().as_slice() != sha256_bytes.as_slice() {
             anyhow::bail!("Sha256 verification failed");
+        }
+    }
+
+    if let Some(sha512) = &hash.sha512 {
+        let mut file = std::fs::File::open(path)?;
+        let sha512_bytes = hex::decode(sha512)?;
+        let mut hasher = sha2::Sha512::new();
+        std::io::copy(&mut file, &mut hasher)?;
+        if hasher.finalize().as_slice() != sha512_bytes.as_slice() {
+            anyhow::bail!("Sha512 verification failed");
         }
     }
 

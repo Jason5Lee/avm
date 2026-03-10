@@ -166,6 +166,8 @@ pub struct FileHash {
     sha1: Option<SmolStr>,
     #[serde(skip_serializing_if = "Option::is_none")]
     sha256: Option<SmolStr>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sha512: Option<SmolStr>,
 }
 
 static CANCELLED: AtomicBool = AtomicBool::new(false);
@@ -198,7 +200,8 @@ where
         if is_cancelled() {
             Poll::Ready(None)
         } else {
-            // TODO: is unsafe right?
+            // SAFETY: CancellableFuture does not move inner after being pinned, and this
+            // projection only creates a pinned mutable reference to that field.
             let inner = unsafe { self.map_unchecked_mut(|s| &mut s.inner) };
             match inner.poll(cx) {
                 Poll::Ready(output) => Poll::Ready(Some(output)),

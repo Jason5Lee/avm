@@ -30,7 +30,7 @@ impl crate::tool::GeneralTool for Tool {
         version_filter: VersionFilter,
     ) -> anyhow::Result<Vec<Version>> {
         let platform = platform.ok_or_else(|| anyhow::anyhow!("Platform is required"))?;
-        let (file_dto, _) = self.get_file_dto_and_archive_suffix(&platform);
+        let (file_dto, _) = self.get_file_dto_and_archive_suffix(&platform)?;
         let version_filter = NodeVersionFilter::try_from(&version_filter)?;
 
         let mut releases = self
@@ -75,7 +75,7 @@ impl crate::tool::GeneralTool for Tool {
         version: VersionFilter,
     ) -> anyhow::Result<ToolDownInfo> {
         let platform = platform.ok_or_else(|| anyhow::anyhow!("Platform is required"))?;
-        let (file_dto, archive_suffix) = self.get_file_dto_and_archive_suffix(&platform);
+        let (file_dto, archive_suffix) = self.get_file_dto_and_archive_suffix(&platform)?;
         let version_filter = NodeVersionFilter::try_from(&version)?;
 
         let release = self
@@ -248,16 +248,23 @@ impl Tool {
         (platforms, file_dto_and_archive_suffix)
     }
 
-    fn get_file_dto_and_archive_suffix(&self, platform: &SmolStr) -> (&'static str, &'static str) {
-        let platform_index = self
-            .info
-            .all_platforms
-            .as_ref()
-            .unwrap()
+    fn get_file_dto_and_archive_suffix(
+        &self,
+        platform: &SmolStr,
+    ) -> anyhow::Result<(&'static str, &'static str)> {
+        let platforms =
+            self.info.all_platforms.as_ref().ok_or_else(|| {
+                anyhow::anyhow!("node tool metadata is missing supported platforms")
+            })?;
+        let platform_index = platforms
             .iter()
             .position(|p| p == platform)
-            .unwrap();
-        self.corresponding_file_dto_and_archive_suffix[platform_index]
+            .ok_or_else(|| anyhow::anyhow!("Unsupported Node platform: {platform}"))?;
+
+        self.corresponding_file_dto_and_archive_suffix
+            .get(platform_index)
+            .copied()
+            .ok_or_else(|| anyhow::anyhow!("Missing Node platform mapping for: {platform}"))
     }
 
     async fn fetch_node_releases(&self, client: &HttpClient) -> reqwest::Result<Vec<ReleaseDto>> {

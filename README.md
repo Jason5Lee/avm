@@ -10,6 +10,7 @@ Built-in general tools:
 - `node`: Node.js JavaScript runtime
 - `liberica`: Liberica Java JDK/JRE
 - `pnpm`: Fast, disk space efficient package manager for Node.js
+- `dotnet`: .NET SDK and runtimes
 
 Use `avm tool` to list all supported tools, and `avm tool <tool>` to inspect platform/flavor values and install examples.
 
@@ -26,6 +27,7 @@ Examples:
 ```bash
 avm install node --lts-only # Install the latest LTS version
 avm get-vers go --platform x64-linux # Install the latest non-prerelease x64 Linux (no matter what platform it runs on) version.
+avm install dotnet --platform arm64-mac --flavor sdk
 avm install liberica --platform x64-linux --flavor jdk
 avm install pnpm -x 10 # Install the latest non-prerelease version in the 10.x.x series.
 ```
@@ -120,17 +122,18 @@ go = "arm64-macos"      # tool-specific override (takes precedence over global)
 
 ## Roadmap
 
-* [x] Liberica JDK/JRE
-* [x] Go
-* [x] Node.js
-* [x] pnpm
-  * Manage multiple pnpm versions is needed based on real-world usage scenarios.
-* [ ] .NET
-* [ ] gcc
-* [ ] clang
-* [ ] Feature: External Alias
+- [x] Liberica JDK/JRE
+- [x] Go
+- [x] Node.js
+- [x] pnpm
+  - Manage multiple pnpm versions is needed based on real-world usage scenarios.
+- [x] .NET
+- [ ] gcc
+- [ ] clang
+- [ ] Feature: External Alias
 
 Won't consider:
+
 - Rust: please use [rustup](https://rustup.rs/) instead.
 - Python: please use [uv](https://docs.astral.sh/uv/) instead.
 - MSVC: I don't want to reverse-engineer what have the installer from Microsoft done.
