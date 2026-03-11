@@ -109,7 +109,7 @@ from = "https://origin.example.com/tool"
 to = "https://mirror.example.com/tool"
 
 # Optional: Override the default platform for tools that support platform selection
-# (currently: go, node, liberica).
+# (currently: go, node, liberica, dotnet).
 # By default, AVM uses the compile-target platform baked into the avm binary at build time.
 # The value must be a valid platform string for the tool (see `avm tool <tool>` for available platforms).
 # If the value does not match any supported platform of the tool, it is ignored
@@ -117,7 +117,8 @@ to = "https://mirror.example.com/tool"
 # Resolution order: tool-specific entry -> global -> compile-target platform.
 [default-platform]
 global = "x64-linux"    # applies to all tools that support platform selection
-go = "arm64-macos"      # tool-specific override (takes precedence over global)
+dotnet = "arm64-mac"    # tool-specific override (takes precedence over global)
+go = "arm64-mac"        # tool-specific override (takes precedence over global)
 ```
 
 ## Roadmap
