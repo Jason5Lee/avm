@@ -129,6 +129,7 @@ go = "arm64-mac"        # tool-specific override (takes precedence over global)
 - [x] pnpm
   - Manage multiple pnpm versions is needed based on real-world usage scenarios.
 - [x] .NET
+- [ ] Python
 - [ ] gcc
 - [ ] clang
 - [ ] Feature: External Alias
@@ -136,5 +137,5 @@ go = "arm64-mac"        # tool-specific override (takes precedence over global)
 Won't consider:
 
 - Rust: please use [rustup](https://rustup.rs/) instead.
-- Python: please use [uv](https://docs.astral.sh/uv/) instead.
+- ~~Python: please use [uv](https://docs.astral.sh/uv/) instead.~~ Since `uv` is occupied by OpenAI, I'll support it as an alternative.
 - MSVC: I don't want to reverse-engineer what have the installer from Microsoft done.
