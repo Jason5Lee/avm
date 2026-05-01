@@ -224,7 +224,7 @@ pub(crate) fn verify_hash(hash: &FileHash, path: &Path) -> Result<(), anyhow::Er
         let mut file = std::fs::File::open(path)?;
         let sha1_bytes = hex::decode(sha1)?;
         let mut hasher = sha1::Sha1::new();
-        std::io::copy(&mut file, &mut hasher)?;
+        update_digest_from_reader(&mut file, &mut hasher)?;
         if hasher.finalize().as_slice() != sha1_bytes.as_slice() {
             anyhow::bail!("Sha1 verification failed");
         }
@@ -234,7 +234,7 @@ pub(crate) fn verify_hash(hash: &FileHash, path: &Path) -> Result<(), anyhow::Er
         let mut file = std::fs::File::open(path)?;
         let sha256_bytes = hex::decode(sha256)?;
         let mut hasher = sha2::Sha256::new();
-        std::io::copy(&mut file, &mut hasher)?;
+        update_digest_from_reader(&mut file, &mut hasher)?;
         if hasher.finalize().as_slice() != sha256_bytes.as_slice() {
             anyhow::bail!("Sha256 verification failed");
         }
@@ -244,7 +244,7 @@ pub(crate) fn verify_hash(hash: &FileHash, path: &Path) -> Result<(), anyhow::Er
         let mut file = std::fs::File::open(path)?;
         let sha512_bytes = hex::decode(sha512)?;
         let mut hasher = sha2::Sha512::new();
-        std::io::copy(&mut file, &mut hasher)?;
+        update_digest_from_reader(&mut file, &mut hasher)?;
         if hasher.finalize().as_slice() != sha512_bytes.as_slice() {
             anyhow::bail!("Sha512 verification failed");
         }
@@ -252,6 +252,20 @@ pub(crate) fn verify_hash(hash: &FileHash, path: &Path) -> Result<(), anyhow::Er
 
     log::debug!("Hash verification passed");
     Ok(())
+}
+
+fn update_digest_from_reader(
+    reader: &mut impl std::io::Read,
+    digest: &mut impl Digest,
+) -> Result<(), std::io::Error> {
+    let mut buffer = [0_u8; 8192];
+    loop {
+        let read_len = reader.read(&mut buffer)?;
+        if read_len == 0 {
+            return Ok(());
+        }
+        digest.update(&buffer[..read_len]);
+    }
 }
 
 pub(crate) fn extract_archive(

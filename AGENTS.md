@@ -60,14 +60,14 @@ Guidance:
   - `after_long_help` (optional)
 - The `avm tool <tool>` output depends on this metadata; keep metadata complete and user-oriented.
 
-## Adding a New General Tool
+## Workflow Skills
 
-1. Implement the tool in `src/tool/general_tool/<tool>.rs` and satisfy `GeneralTool`.
-2. Add it to `src/tool/general_tool.rs` module exports if needed.
-3. Extend `ToolName` and `ToolSet` in `src/bin/avm_cli/general_tool/mod.rs`.
-4. Wire dispatch branches for every relevant subcommand in `src/bin/avm_cli/general_tool/mod.rs`.
-5. Ensure `avm tool` and `avm tool <tool>` show correct metadata and examples.
-6. Add or update README usage examples if CLI behavior changed.
+- Use the `add-general-tool` skill for the end-to-end workflow of adding a new general tool.
+
+## Release Metadata Notes
+
+- .NET release metadata can contain file entries without `rid`.
+- Parsers must treat `rid` as optional and only select archive entries with a matching `rid` when one is present.
 
 ## Development Notes
 
@@ -77,4 +77,6 @@ Guidance:
 - `src/io/blocking` contains blocking I/O helpers; when calling them from async code, wrap the blocking work in `spawn_blocking`.
 - Before committing, run formatting and checks available in the current environment:
   - `cargo fmt`
+  - `cargo test`
   - `cargo clippy`
+  - `cargo clippy --all-targets --all-features`
